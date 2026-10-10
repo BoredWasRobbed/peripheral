@@ -87,10 +87,12 @@ public class OtherBaseEffect implements PresenceEffect {
 			if (OtherBaseBuilder.canSee(player, layout)) {
 				continue;
 			}
-			OtherBaseBuilder.build(world, layout, 0, random);
+			OtherBaseStyle style = OtherBaseStyle.choose(world, layout, floor);
+			OtherBaseBuilder.build(world, layout, style, 0, random);
 			BlockPos door = layout.door();
 			state.setOtherBase(door, layout.centre(), front, 0, world.getTime() + OtherBaseBuilder.stageTicks());
-			EffectDebug.report(player, NAME, door, "started: " + OtherBaseBuilder.stageName(0));
+			style.save(state);
+			EffectDebug.report(player, NAME, door, "started (" + style.describe() + "): " + OtherBaseBuilder.stageName(0));
 			return true;
 		}
 		return false;

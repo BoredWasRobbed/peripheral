@@ -23,6 +23,8 @@ import net.minecraft.block.entity.ChestBlockEntity;
 import net.minecraft.block.entity.FurnaceBlockEntity;
 import net.minecraft.block.enums.BedPart;
 import net.minecraft.block.enums.DoubleBlockHalf;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.passive.AnimalEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.registry.tag.BlockTags;
@@ -61,12 +63,14 @@ public final class OtherBaseBuilder {
 	private static final double PRIVACY = 40.0;
 	/** Players this close hear it being built. */
 	static final double HEARING = 80.0;
+	/** Chunks within this many blocks of the centre are loaded when the base is built or tidied from afar. */
+	private static final int AREA = 28;
 	private static final String[] STAGE_NAMES = {
 			"a cleared spot with a crafting table, chest and campfire",
 			"walls going up and a bed",
 			"walls, roof, door and torches",
-			"a furnace with food in it and a small wheat farm",
-			"a fenced farm, torch posts and a path"};
+			"a furnace with food in it, and a wheat farm or an animal pen",
+			"a fence round the farm or a young animal in the pen, torch posts and a path"};
 
 	private OtherBaseBuilder() {
 	}
@@ -242,9 +246,10 @@ public final class OtherBaseBuilder {
 			return;
 		}
 		Layout layout = layoutOf(world, state);
-		if (layout == null || !isLoaded(world, layout) || isWatched(world, layout)) {
+		if (layout == null || isWatched(world, layout)) {
 			return;
 		}
+		loadArea(world, layout);
 		if (tidy) {
 			OtherBaseTidy.tidy(world, state, layout);
 		}
@@ -262,9 +267,10 @@ public final class OtherBaseBuilder {
 		}
 		ServerWorld world = server.getOverworld();
 		Layout layout = layoutOf(world, state);
-		if (layout == null || !isLoaded(world, layout)) {
+		if (layout == null) {
 			return -1;
 		}
+		loadArea(world, layout);
 		grow(world, state, layout, world.getTime() + stageTicks());
 		return state.otherBaseStage();
 	}
@@ -272,7 +278,7 @@ public final class OtherBaseBuilder {
 	private static void grow(ServerWorld world, PeripheralWorldState state, Layout layout, long nextStage) {
 		int stage = state.otherBaseStage() + 1;
 		Random random = world.getRandom();
-		build(world, layout, stage, random);
+		build(world, layout, OtherBaseStyle.of(state), stage, random);
 		state.setOtherBaseStage(stage, nextStage);
 
 		BlockPos door = layout.door();
@@ -293,9 +299,6 @@ public final class OtherBaseBuilder {
 			return new Layout(state.otherBaseCentre(), state.otherBaseFront());
 		}
 		BlockPos door = state.otherBase();
-		if (!world.isChunkLoaded(door)) {
-			return null;
-		}
 		BlockState doorState = world.getBlockState(door);
 		if (!(doorState.getBlock() instanceof DoorBlock)) {
 			// Someone took the door out; leave the place as it is.
@@ -308,20 +311,35 @@ public final class OtherBaseBuilder {
 		return new Layout(centre, front);
 	}
 
-	static boolean isLoaded(ServerWorld world, Layout layout) {
-		return world.isChunkLoaded(layout.at(-HALF, -HALF, 0)) && world.isChunkLoaded(layout.at(HALF, -HALF, 0))
-				&& world.isChunkLoaded(layout.at(-HALF, PLOT_END, 0)) && world.isChunkLoaded(layout.at(HALF, PLOT_END, 0));
+	/**
+	 * Loads the chunks around the base, so it can be built and tidied while everyone is far away. The server lets them
+	 * unload again on its own once nobody needs them.
+	 */
+	static void loadArea(ServerWorld world, Layout layout) {
+		BlockPos centre = layout.centre();
+		for (int cx = (centre.getX() - AREA) >> 4; cx <= (centre.getX() + AREA) >> 4; cx++) {
+			for (int cz = (centre.getZ() - AREA) >> 4; cz <= (centre.getZ() + AREA) >> 4; cz++) {
+				world.getChunk(cx, cz);
+			}
+		}
 	}
 
+	/** Someone is close to the base, or near enough to have it on screen and looking its way. */
 	static boolean isWatched(ServerWorld world, Layout layout) {
 		BlockPos centre = layout.centre();
+		double viewDistance = world.getServer().getPlayerManager().getViewDistance() * 16.0 + 16.0;
 		for (ServerPlayerEntity player : world.getPlayers()) {
 			if (player.isSpectator()) {
 				continue;
 			}
 			double dx = player.getX() - centre.getX();
 			double dz = player.getZ() - centre.getZ();
-			if (dx * dx + dz * dz < PRIVACY * PRIVACY || canSee(player, layout)) {
+			double distanceSq = dx * dx + dz * dz;
+			if (distanceSq < PRIVACY * PRIVACY) {
+				return true;
+			}
+			// Beyond their view distance the base isn't even drawn, and looking would load chunks just to check.
+			if (distanceSq < viewDistance * viewDistance && canSee(player, layout)) {
 				return true;
 			}
 		}
@@ -343,13 +361,13 @@ public final class OtherBaseBuilder {
 
 	// ---- The stages ----
 
-	static void build(ServerWorld world, Layout layout, int stage, Random random) {
+	static void build(ServerWorld world, Layout layout, OtherBaseStyle style, int stage, Random random) {
 		switch (stage) {
-			case 0 -> buildSite(world, layout, random);
-			case 1 -> buildLowWalls(world, layout);
-			case 2 -> buildCabin(world, layout);
-			case 3 -> buildLivedIn(world, layout, random);
-			default -> buildSettled(world, layout, random);
+			case 0 -> buildSite(world, layout, style, random);
+			case 1 -> buildLowWalls(world, layout, style);
+			case 2 -> buildCabin(world, layout, style);
+			case 3 -> buildLivedIn(world, layout, style, random);
+			default -> buildSettled(world, layout, style, random);
 		}
 	}
 
@@ -357,7 +375,7 @@ public final class OtherBaseBuilder {
 	 * Stage 0: the whole plot levelled to one height (the ground is already within a block of it), the cabin's floor
 	 * laid, a crafting table, a chest of what they had on them, and a campfire.
 	 */
-	private static void buildSite(ServerWorld world, Layout layout, Random random) {
+	private static void buildSite(ServerWorld world, Layout layout, OtherBaseStyle style, Random random) {
 		for (int a = -HALF; a <= HALF; a++) {
 			for (int b = -HALF; b <= PLOT_END; b++) {
 				for (int y = 1; y <= 5; y++) {
@@ -368,7 +386,7 @@ public final class OtherBaseBuilder {
 				boolean cabin = Math.abs(a) <= HALF && Math.abs(b) <= HALF;
 				if (cabin) {
 					boolean edge = Math.abs(a) == HALF || Math.abs(b) == HALF;
-					setGround(world, ground, (edge ? Blocks.COBBLESTONE : Blocks.OAK_PLANKS).getDefaultState());
+					setGround(world, ground, (edge ? style.stone() : style.wood().planks).getDefaultState());
 				} else if (isClear(world, ground)) {
 					world.setBlockState(ground, Blocks.GRASS_BLOCK.getDefaultState(), Block.NOTIFY_LISTENERS);
 				}
@@ -384,24 +402,24 @@ public final class OtherBaseBuilder {
 		ItemStack pickaxe = new ItemStack(Items.WOODEN_PICKAXE);
 		pickaxe.setDamage(10 + random.nextInt(40));
 		stock(world, layout.at(2, -2, 1), random,
-				new ItemStack(Items.OAK_LOG, 4 + random.nextInt(7)),
+				new ItemStack(style.wood().log, 4 + random.nextInt(7)),
 				new ItemStack(Items.STICK, 2 + random.nextInt(5)),
 				new ItemStack(Items.APPLE, 1 + random.nextInt(2)),
 				pickaxe);
 	}
 
 	/** Stage 1: log corners up to full height, the first row of planks, and a bed. */
-	private static void buildLowWalls(ServerWorld world, Layout layout) {
+	private static void buildLowWalls(ServerWorld world, Layout layout, OtherBaseStyle style) {
 		for (int a = -HALF; a <= HALF; a++) {
 			for (int b = -HALF; b <= HALF; b++) {
 				boolean corner = Math.abs(a) == HALF && Math.abs(b) == HALF;
 				boolean edge = Math.abs(a) == HALF || Math.abs(b) == HALF;
 				if (corner) {
 					for (int y = 1; y <= 3; y++) {
-						placeSupported(world, layout.at(a, b, y), Blocks.OAK_LOG.getDefaultState());
+						placeSupported(world, layout.at(a, b, y), style.wood().log.getDefaultState());
 					}
 				} else if (edge && !(a == 0 && b == HALF)) {
-					placeSupported(world, layout.at(a, b, 1), Blocks.OAK_PLANKS.getDefaultState());
+					placeSupported(world, layout.at(a, b, 1), style.wood().planks.getDefaultState());
 				}
 			}
 		}
@@ -409,7 +427,7 @@ public final class OtherBaseBuilder {
 	}
 
 	/** Stage 2: the rest of the walls with windows, the door, a roof, and torches inside and out. */
-	private static void buildCabin(ServerWorld world, Layout layout) {
+	private static void buildCabin(ServerWorld world, Layout layout, OtherBaseStyle style) {
 		Direction front = layout.front();
 		for (int y = 2; y <= 3; y++) {
 			for (int a = -HALF; a <= HALF; a++) {
@@ -421,7 +439,7 @@ public final class OtherBaseBuilder {
 					}
 					boolean window = y == 2 && ((Math.abs(a) == HALF && b == 0) || (a == 0 && b == -HALF));
 					// Above the doorway the planks rest on the frame, not on anything below.
-					BlockState wall = (window ? Blocks.GLASS : Blocks.OAK_PLANKS).getDefaultState();
+					BlockState wall = (window ? Blocks.GLASS : style.wood().planks).getDefaultState();
 					if (a == 0 && b == HALF) {
 						place(world, layout.at(a, b, y), wall);
 					} else {
@@ -434,20 +452,20 @@ public final class OtherBaseBuilder {
 		boolean corners = true;
 		for (int a = -HALF; a <= HALF; a += 2 * HALF) {
 			for (int b = -HALF; b <= HALF; b += 2 * HALF) {
-				corners &= world.getBlockState(layout.at(a, b, 3)).isOf(Blocks.OAK_LOG);
+				corners &= world.getBlockState(layout.at(a, b, 3)).isIn(BlockTags.LOGS);
 			}
 		}
 		if (corners) {
 			for (int a = -HALF; a <= HALF; a++) {
 				for (int b = -HALF; b <= HALF; b++) {
-					place(world, layout.at(a, b, 4), Blocks.OAK_PLANKS.getDefaultState());
+					place(world, layout.at(a, b, 4), style.wood().planks.getDefaultState());
 				}
 			}
 		}
 
 		BlockPos lower = layout.at(0, HALF, 1);
 		if (isClear(world, lower) && isClear(world, lower.up()) && isSolidBelow(world, lower)) {
-			BlockState door = Blocks.OAK_DOOR.getDefaultState().with(DoorBlock.FACING, front.getOpposite());
+			BlockState door = style.wood().door.getDefaultState().with(DoorBlock.FACING, front.getOpposite());
 			world.setBlockState(lower, door.with(DoorBlock.HALF, DoubleBlockHalf.LOWER), Block.NOTIFY_LISTENERS);
 			world.setBlockState(lower.up(), door.with(DoorBlock.HALF, DoubleBlockHalf.UPPER), Block.NOTIFY_LISTENERS);
 		}
@@ -455,15 +473,78 @@ public final class OtherBaseBuilder {
 		place(world, layout.at(1, HALF + 1, 2), Blocks.WALL_TORCH.getDefaultState().with(WallTorchBlock.FACING, front));
 	}
 
-	/** Stage 3: a furnace with cooked food left in it, a 3x3 wheat farm out front, and more in the chest. */
-	private static void buildLivedIn(ServerWorld world, Layout layout, Random random) {
+	/**
+	 * Stage 3: a furnace with cooked food left in it, more in the chest, and out front either a 3x3 wheat farm or,
+	 * where animals graze nearby, a fenced pen with two of them in it.
+	 */
+	private static void buildLivedIn(ServerWorld world, Layout layout, OtherBaseStyle style, Random random) {
 		BlockPos furnacePos = layout.at(0, -2, 1);
 		placeSupported(world, furnacePos, Blocks.FURNACE.getDefaultState().with(AbstractFurnaceBlock.FACING, layout.front()));
 		if (world.getBlockEntity(furnacePos) instanceof FurnaceBlockEntity furnace && furnace.getStack(2).isEmpty()) {
-			furnace.setStack(2, new ItemStack(random.nextBoolean() ? Items.COOKED_BEEF : Items.COOKED_PORKCHOP, 2 + random.nextInt(3)));
+			furnace.setStack(2, new ItemStack(style.cookedFood(random.nextBoolean()), 2 + random.nextInt(3)));
 			furnace.markDirty();
 		}
 
+		if (style.yard() == null) {
+			buildFarm(world, layout, random);
+		} else {
+			buildFence(world, layout, style);
+			addAnimals(world, layout, style.yard(), 2, false, random);
+		}
+
+		stock(world, layout.at(2, -2, 1), random,
+				new ItemStack(Items.BREAD, 2 + random.nextInt(4)),
+				new ItemStack(Items.COAL, 4 + random.nextInt(9)),
+				new ItemStack(style.stone(), 20 + random.nextInt(40)),
+				new ItemStack(Items.RAW_IRON, 2 + random.nextInt(4)),
+				style.yard() == null ? new ItemStack(Items.WHEAT_SEEDS, 3 + random.nextInt(8)) : new ItemStack(Items.WHEAT, 4 + random.nextInt(8)));
+	}
+
+	/**
+	 * Stage 4: settled in. The farm gets its fence and ripens, or the pen has a young one; torches go on the corner
+	 * posts and a path is worn in front of the door.
+	 */
+	private static void buildSettled(ServerWorld world, Layout layout, OtherBaseStyle style, Random random) {
+		if (style.yard() == null) {
+			buildFence(world, layout, style);
+			for (int a = 0; a <= 2; a++) {
+				for (int b = HALF + 3; b <= HALF + 5; b++) {
+					BlockPos crop = layout.at(a, b, 1);
+					if (world.getBlockState(crop).isOf(Blocks.WHEAT)) {
+						world.setBlockState(crop, Blocks.WHEAT.getDefaultState().with(CropBlock.AGE, CropBlock.MAX_AGE), Block.NOTIFY_LISTENERS);
+					}
+				}
+			}
+		} else {
+			addAnimals(world, layout, style.yard(), 1, true, random);
+		}
+
+		for (int a = -1; a <= 3; a += 4) {
+			for (int b = HALF + 2; b <= PLOT_END; b += PLOT_END - HALF - 2) {
+				BlockPos post = layout.at(a, b, 1);
+				if (world.getBlockState(post).isIn(BlockTags.FENCES)) {
+					place(world, post.up(), Blocks.TORCH.getDefaultState());
+				}
+			}
+		}
+		for (int a = -2; a <= 1; a++) {
+			BlockPos path = layout.at(a, HALF + 1, 0);
+			if (world.getBlockState(path).isOf(Blocks.GRASS_BLOCK) || world.getBlockState(path).isOf(Blocks.DIRT)) {
+				if (isClear(world, path.up())) {
+					world.setBlockState(path, Blocks.DIRT_PATH.getDefaultState(), Block.NOTIFY_LISTENERS);
+				}
+			}
+		}
+
+		stock(world, layout.at(2, -2, 1), random,
+				new ItemStack(Items.IRON_INGOT, 2 + random.nextInt(5)),
+				new ItemStack(Items.TORCH, 8 + random.nextInt(12)),
+				new ItemStack(style.animalProduct(), 3 + random.nextInt(6)),
+				new ItemStack(Items.BREAD, 2 + random.nextInt(3)));
+	}
+
+	/** A 3x3 wheat farm around a water block, in front of the cabin. */
+	private static void buildFarm(ServerWorld world, Layout layout, Random random) {
 		BlockPos water = layout.at(1, HALF + 4, 0);
 		for (int a = 0; a <= 2; a++) {
 			for (int b = HALF + 3; b <= HALF + 5; b++) {
@@ -480,41 +561,28 @@ public final class OtherBaseBuilder {
 		if (isNaturalGround(world, water) && isClear(world, water.up()) && holdsWater(world, water)) {
 			world.setBlockState(water, Blocks.WATER.getDefaultState(), Block.NOTIFY_LISTENERS);
 		}
-
-		stock(world, layout.at(2, -2, 1), random,
-				new ItemStack(Items.BREAD, 2 + random.nextInt(4)),
-				new ItemStack(Items.COAL, 4 + random.nextInt(9)),
-				new ItemStack(Items.COBBLESTONE, 20 + random.nextInt(40)),
-				new ItemStack(Items.RAW_IRON, 2 + random.nextInt(4)),
-				new ItemStack(Items.WHEAT_SEEDS, 3 + random.nextInt(8)));
 	}
 
-	/** Stage 4: a fence round the farm with a gate facing the door, torches on the corner posts, a path, ripe wheat. */
-	private static void buildSettled(ServerWorld world, Layout layout, Random random) {
+	/** A fence around the yard in front of the cabin, with a gate facing the door. */
+	private static void buildFence(ServerWorld world, Layout layout, OtherBaseStyle style) {
 		int nearRow = HALF + 2;
-		int farRow = PLOT_END;
 		for (int a = -1; a <= 3; a++) {
-			for (int b = nearRow; b <= farRow; b++) {
-				boolean ring = a == -1 || a == 3 || b == nearRow || b == farRow;
+			for (int b = nearRow; b <= PLOT_END; b++) {
+				boolean ring = a == -1 || a == 3 || b == nearRow || b == PLOT_END;
 				if (!ring) {
 					continue;
 				}
 				BlockPos post = layout.at(a, b, 1);
-				boolean placed;
 				if (a == 1 && b == nearRow) {
-					placed = placeSupported(world, post, Blocks.OAK_FENCE_GATE.getDefaultState().with(FenceGateBlock.FACING, layout.front()));
+					placeSupported(world, post, style.wood().gate.getDefaultState().with(FenceGateBlock.FACING, layout.front()));
 				} else {
-					placed = placeSupported(world, post, Blocks.OAK_FENCE.getDefaultState());
-				}
-				boolean corner = (a == -1 || a == 3) && (b == nearRow || b == farRow);
-				if (placed && corner) {
-					place(world, post.up(), Blocks.TORCH.getDefaultState());
+					placeSupported(world, post, style.wood().fence.getDefaultState());
 				}
 			}
 		}
 		// Fences and the gate join up with their neighbours, as they would if placed by hand.
 		for (int a = -1; a <= 3; a++) {
-			for (int b = nearRow; b <= farRow; b++) {
+			for (int b = nearRow; b <= PLOT_END; b++) {
 				BlockPos pos = layout.at(a, b, 1);
 				BlockState state = world.getBlockState(pos);
 				if (state.isIn(BlockTags.FENCES) || state.isIn(BlockTags.FENCE_GATES)) {
@@ -522,29 +590,22 @@ public final class OtherBaseBuilder {
 				}
 			}
 		}
+	}
 
-		for (int a = -2; a <= 1; a++) {
-			BlockPos path = layout.at(a, HALF + 1, 0);
-			if (world.getBlockState(path).isOf(Blocks.GRASS_BLOCK) || world.getBlockState(path).isOf(Blocks.DIRT)) {
-				if (isClear(world, path.up())) {
-					world.setBlockState(path, Blocks.DIRT_PATH.getDefaultState(), Block.NOTIFY_LISTENERS);
-				}
+	/** Animals inside the fence, kept for good: they never despawn. */
+	private static void addAnimals(ServerWorld world, Layout layout, EntityType<?> type, int count, boolean baby, Random random) {
+		for (int i = 0; i < count; i++) {
+			BlockPos spot = layout.at(random.nextBetween(0, 2), random.nextBetween(HALF + 3, HALF + 5), 1);
+			if (!isClear(world, spot) || !(type.create(world) instanceof AnimalEntity animal)) {
+				continue;
 			}
-		}
-		for (int a = 0; a <= 2; a++) {
-			for (int b = HALF + 3; b <= HALF + 5; b++) {
-				BlockPos crop = layout.at(a, b, 1);
-				if (world.getBlockState(crop).isOf(Blocks.WHEAT)) {
-					world.setBlockState(crop, Blocks.WHEAT.getDefaultState().with(CropBlock.AGE, CropBlock.MAX_AGE), Block.NOTIFY_LISTENERS);
-				}
+			animal.refreshPositionAndAngles(spot.getX() + 0.5, spot.getY(), spot.getZ() + 0.5, random.nextFloat() * 360.0f, 0.0f);
+			animal.setPersistent();
+			if (baby) {
+				animal.setBreedingAge(-24000);
 			}
+			world.spawnEntity(animal);
 		}
-
-		stock(world, layout.at(2, -2, 1), random,
-				new ItemStack(Items.IRON_INGOT, 2 + random.nextInt(5)),
-				new ItemStack(Items.TORCH, 8 + random.nextInt(12)),
-				new ItemStack(Items.WHEAT, 3 + random.nextInt(8)),
-				new ItemStack(Items.BREAD, 2 + random.nextInt(3)));
 	}
 
 	/** The bed goes in the back corner: like a nearby player's own bed if one is loaded, otherwise red. */

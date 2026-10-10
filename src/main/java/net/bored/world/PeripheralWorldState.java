@@ -29,6 +29,10 @@ public class PeripheralWorldState extends PersistentState {
 	private int otherBaseStage;
 	/** World time at which the next stage is due. */
 	private long otherBaseNextStage;
+	/** What the base is built from: wood name, stone block id, and the animal kept out front (empty for a farm). */
+	private String otherBaseWood = "";
+	private String otherBaseStone = "";
+	private String otherBaseYard = "";
 	/** Blocks players placed around the other base, with the block that was placed, waiting to be tidied away. */
 	private final Map<BlockPos, String> placedNearBase = new LinkedHashMap<>();
 
@@ -47,6 +51,9 @@ public class PeripheralWorldState extends PersistentState {
 		}
 		state.otherBaseStage = nbt.getInt("otherBaseStage");
 		state.otherBaseNextStage = nbt.getLong("otherBaseNextStage");
+		state.otherBaseWood = nbt.getString("otherBaseWood");
+		state.otherBaseStone = nbt.getString("otherBaseStone");
+		state.otherBaseYard = nbt.getString("otherBaseYard");
 		NbtList placed = nbt.getList("placedNearBase", NbtElement.COMPOUND_TYPE);
 		for (int i = 0; i < placed.size(); i++) {
 			NbtCompound entry = placed.getCompound(i);
@@ -66,6 +73,9 @@ public class PeripheralWorldState extends PersistentState {
 		}
 		nbt.putInt("otherBaseStage", otherBaseStage);
 		nbt.putLong("otherBaseNextStage", otherBaseNextStage);
+		nbt.putString("otherBaseWood", otherBaseWood);
+		nbt.putString("otherBaseStone", otherBaseStone);
+		nbt.putString("otherBaseYard", otherBaseYard);
 		NbtList placed = new NbtList();
 		placedNearBase.forEach((pos, block) -> {
 			NbtCompound entry = new NbtCompound();
@@ -114,6 +124,28 @@ public class PeripheralWorldState extends PersistentState {
 		otherBaseStage = 0;
 		otherBaseNextStage = 0L;
 		placedNearBase.clear();
+		otherBaseWood = "";
+		otherBaseStone = "";
+		otherBaseYard = "";
+		markDirty();
+	}
+
+	public String otherBaseWood() {
+		return otherBaseWood;
+	}
+
+	public String otherBaseStone() {
+		return otherBaseStone;
+	}
+
+	public String otherBaseYard() {
+		return otherBaseYard;
+	}
+
+	public void setOtherBaseStyle(String wood, String stone, String yard) {
+		otherBaseWood = wood;
+		otherBaseStone = stone;
+		otherBaseYard = yard;
 		markDirty();
 	}
 
