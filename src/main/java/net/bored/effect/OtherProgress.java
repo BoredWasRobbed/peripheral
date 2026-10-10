@@ -47,7 +47,7 @@ final class OtherProgress {
 		}
 
 		// Armor on the stand: leather once the cabin stands, iron once it can afford a chestplate.
-		if (other.armorTier == 0 && base.otherBaseStage() >= 2 && other.toolTier >= 1) {
+		if (other.armorTier == 0 && base.otherBaseStage() >= OtherBaseBuilder.STAGE_CABIN && other.toolTier >= 1) {
 			dress(world, layout, new ItemStack(Items.LEATHER_HELMET), new ItemStack(Items.LEATHER_CHESTPLATE));
 			other.armorTier = 1;
 			other.markDirty();

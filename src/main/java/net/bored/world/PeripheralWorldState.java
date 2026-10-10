@@ -32,6 +32,8 @@ public class PeripheralWorldState extends PersistentState {
 	private BlockPos otherBaseCentre;
 	private Direction otherBaseFront;
 	private int otherBaseStage;
+	/** Where each of the original seven stages falls among the current ones. */
+	private static final int[] LEGACY_STAGES = {0, 2, 6, 8, 9, 11, 12};
 	/** World time at which the next stage is due. */
 	private long otherBaseNextStage;
 	/** What the base is built from: wood name, stone block id, and the animal kept out front (empty for a farm). */
@@ -60,7 +62,13 @@ public class PeripheralWorldState extends PersistentState {
 			state.otherBaseCentre = NbtHelper.toBlockPos(nbt.getCompound("otherBaseCentre"));
 			state.otherBaseFront = Direction.byName(nbt.getString("otherBaseFront"));
 		}
-		state.otherBaseStage = nbt.getInt("otherBaseStage");
+		if (nbt.contains("otherBaseBuildStage")) {
+			state.otherBaseStage = nbt.getInt("otherBaseBuildStage");
+		} else {
+			// Bases from before the build was split into more stages: the same point in the new numbering.
+			int old = nbt.getInt("otherBaseStage");
+			state.otherBaseStage = LEGACY_STAGES[Math.max(0, Math.min(LEGACY_STAGES.length - 1, old))];
+		}
 		state.otherBaseNextStage = nbt.getLong("otherBaseNextStage");
 		state.otherBaseWood = nbt.getString("otherBaseWood");
 		state.otherBaseStone = nbt.getString("otherBaseStone");
@@ -94,7 +102,7 @@ public class PeripheralWorldState extends PersistentState {
 			nbt.put("otherBaseCentre", NbtHelper.fromBlockPos(otherBaseCentre));
 			nbt.putString("otherBaseFront", otherBaseFront.getName());
 		}
-		nbt.putInt("otherBaseStage", otherBaseStage);
+		nbt.putInt("otherBaseBuildStage", otherBaseStage);
 		nbt.putLong("otherBaseNextStage", otherBaseNextStage);
 		nbt.putString("otherBaseWood", otherBaseWood);
 		nbt.putString("otherBaseStone", otherBaseStone);

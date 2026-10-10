@@ -18,22 +18,32 @@ import net.minecraft.block.CropBlock;
 import net.minecraft.block.DoorBlock;
 import net.minecraft.block.FarmlandBlock;
 import net.minecraft.block.FenceGateBlock;
+import net.minecraft.block.LanternBlock;
+import net.minecraft.block.PillarBlock;
+import net.minecraft.block.SlabBlock;
+import net.minecraft.block.StairsBlock;
+import net.minecraft.block.TrapdoorBlock;
 import net.minecraft.block.WallTorchBlock;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.ChestBlockEntity;
 import net.minecraft.block.entity.FurnaceBlockEntity;
 import net.minecraft.block.enums.BedPart;
+import net.minecraft.block.enums.BlockHalf;
+import net.minecraft.block.enums.SlabType;
 import net.minecraft.block.enums.DoubleBlockHalf;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.passive.AnimalEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.registry.Registries;
 import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.sound.BlockSoundGroup;
 import net.minecraft.sound.SoundEvent;
+import net.minecraft.util.DyeColor;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
@@ -49,7 +59,15 @@ import net.minecraft.world.Heightmap;
  */
 public final class OtherBaseBuilder {
 	public static final int CHECK_INTERVAL = 30 * 20;
-	public static final int MAX_STAGE = 6;
+	public static final int MAX_STAGE = 12;
+	/** The cabin is finished: walls, roof, door and windows. */
+	public static final int STAGE_CABIN = 6;
+	/** The farm or the pen is in. */
+	public static final int STAGE_YARD = 8;
+	/** The portal frame, which waits for iron tools. */
+	static final int STAGE_PORTAL = 12;
+	/** Height of the roof's ridge above the floor. */
+	static final int ROOF_TOP = 7;
 	/** The cabin is 7x7 around its centre. In front of the door: a step, the campfire, and the farm. */
 	static final int HALF = 3;
 	/** Last row of the plot in front of the cabin: step and campfire, then the fenced farm. */
@@ -68,11 +86,17 @@ public final class OtherBaseBuilder {
 	private static final int AREA = 28;
 	private static final String[] STAGE_NAMES = {
 			"a cleared spot with a crafting table, chest and campfire",
+			"log corner posts and a course of stone",
 			"walls going up and a bed",
-			"walls, roof, door and torches",
-			"a furnace with food in it, and a wheat farm or an animal pen",
+			"a log beam along the top of the walls",
+			"the gable ends and the first courses of roof",
+			"the roof finished, with a log ridge",
+			"the door, glass windows, shutters and torches",
+			"a furnace with food in it, lanterns and a rug",
+			"a wheat farm or an animal pen",
 			"a fence round the farm or a young animal in the pen, torch posts and a path",
-			"a second room on the side",
+			"flowers by the door and a lamp post",
+			"a lean-to on the side",
 			"a nether portal frame, never lit"};
 
 	private OtherBaseBuilder() {
@@ -136,6 +160,14 @@ public final class OtherBaseBuilder {
 					if (Math.abs(top - floor) > 2 && !world.getBlockState(ground).isIn(BlockTags.LOGS)) {
 						return null;
 					}
+					// Except under the eaves, which need room to hang over.
+					if (Math.abs(a) <= HALF + 1 && Math.abs(b) <= HALF + 1) {
+						for (int y = Math.max(top + 1, floor + 3); y <= floor + ROOF_TOP + 1; y++) {
+							if (!isClear(world, new BlockPos(column.getX(), y, column.getZ()))) {
+								return null;
+							}
+						}
+					}
 					continue;
 				}
 				if (Math.abs(top - floor) > 1) {
@@ -149,7 +181,7 @@ public final class OtherBaseBuilder {
 				if (!world.getFluidState(ground).isEmpty() || !(groundState.isIn(BlockTags.DIRT) || groundState.isIn(BlockTags.SAND))) {
 					return null;
 				}
-				for (int y = top + 1; y <= floor + 6; y++) {
+				for (int y = top + 1; y <= floor + ROOF_TOP + 1; y++) {
 					if (!isClear(world, new BlockPos(column.getX(), y, column.getZ()))) {
 						return null;
 					}
@@ -295,7 +327,7 @@ public final class OtherBaseBuilder {
 
 	private static void grow(ServerWorld world, PeripheralWorldState state, Layout layout, long nextStage) {
 		int stage = state.otherBaseStage() + 1;
-		if (stage == 6 && OtherPlayerState.get(world.getServer()).toolTier < 2) {
+		if (stage == STAGE_PORTAL && OtherPlayerState.get(world.getServer()).toolTier < 2) {
 			// The portal frame waits until it has iron tools.
 			state.setOtherBaseStage(state.otherBaseStage(), nextStage);
 			return;
@@ -331,7 +363,7 @@ public final class OtherBaseBuilder {
 		}
 		Direction front = doorState.get(DoorBlock.FACING).getOpposite();
 		BlockPos centre = door.offset(front.getOpposite(), HALF).down();
-		state.setOtherBase(door, centre, front, 2, world.getTime());
+		state.setOtherBase(door, centre, front, STAGE_CABIN, world.getTime());
 		return new Layout(centre, front);
 	}
 
@@ -388,13 +420,39 @@ public final class OtherBaseBuilder {
 	static void build(ServerWorld world, Layout layout, OtherBaseStyle style, int stage, Random random) {
 		switch (stage) {
 			case 0 -> buildSite(world, layout, style, random);
-			case 1 -> buildLowWalls(world, layout, style);
-			case 2 -> buildCabin(world, layout, style);
-			case 3 -> buildLivedIn(world, layout, style, random);
-			case 4 -> buildSettled(world, layout, style, random);
-			case 5 -> buildAnnex(world, layout, style);
+			case 1 -> buildFooting(world, layout, style);
+			case 2 -> buildWalls(world, layout, style);
+			case 3 -> buildTopBeam(world, layout, style);
+			case 4 -> buildRoof(world, layout, style, 0, 1);
+			case 5 -> buildRoof(world, layout, style, 2, 4);
+			case 6 -> buildFinishing(world, layout, style);
+			case 7 -> buildInterior(world, layout, style, random);
+			case 8 -> buildYard(world, layout, style, random);
+			case 9 -> buildSettled(world, layout, style, random);
+			case 10 -> buildGarden(world, layout, style, random);
+			case 11 -> buildAnnex(world, layout, style);
 			default -> buildPortalFrame(world, layout);
 		}
+	}
+
+	private static boolean isWall(int a, int b) {
+		return Math.abs(a) <= HALF && Math.abs(b) <= HALF && (Math.abs(a) == HALF || Math.abs(b) == HALF);
+	}
+
+	private static boolean isCorner(int a, int b) {
+		return Math.abs(a) == HALF && Math.abs(b) == HALF;
+	}
+
+	private static boolean isDoorway(int a, int b, int y) {
+		return a == 0 && b == HALF && y <= 2;
+	}
+
+	/** One window in each side wall and the back, one either side of the door, and one high in each gable. */
+	private static boolean isWindow(int a, int b, int y) {
+		if (y == 5) {
+			return a == 0 && Math.abs(b) == HALF;
+		}
+		return y == 2 && ((Math.abs(a) == HALF && b == 0) || (a == 0 && b == -HALF) || (Math.abs(a) == 2 && b == HALF));
 	}
 
 	/**
@@ -404,17 +462,26 @@ public final class OtherBaseBuilder {
 	private static void buildSite(ServerWorld world, Layout layout, OtherBaseStyle style, Random random) {
 		for (int a = -HALF; a <= HALF; a++) {
 			for (int b = -HALF; b <= PLOT_END; b++) {
-				for (int y = 1; y <= 5; y++) {
+				for (int y = 1; y <= ROOF_TOP + 1; y++) {
 					clear(world, layout.at(a, b, y));
 				}
 				BlockPos ground = layout.at(a, b, 0);
 				fillBelow(world, ground, Blocks.DIRT.getDefaultState());
 				boolean cabin = Math.abs(a) <= HALF && Math.abs(b) <= HALF;
 				if (cabin) {
-					boolean edge = Math.abs(a) == HALF || Math.abs(b) == HALF;
-					setGround(world, ground, (edge ? style.stone() : style.wood().planks).getDefaultState());
+					setGround(world, ground, (isWall(a, b) ? style.stone() : style.wood().planks).getDefaultState());
 				} else if (isClear(world, ground)) {
 					world.setBlockState(ground, Blocks.GRASS_BLOCK.getDefaultState(), Block.NOTIFY_LISTENERS);
+				}
+			}
+		}
+		// Room for the eaves that will hang over the sides and back.
+		for (int a = -HALF - 1; a <= HALF + 1; a++) {
+			for (int b = -HALF - 1; b <= HALF + 1; b++) {
+				if (!inPlot(a, b)) {
+					for (int y = 3; y <= ROOF_TOP + 1; y++) {
+						clear(world, layout.at(a, b, y));
+					}
 				}
 			}
 		}
@@ -434,100 +501,179 @@ public final class OtherBaseBuilder {
 				pickaxe);
 	}
 
-	/** Stage 1: log corners up to full height, the first row of planks, and a bed. */
-	private static void buildLowWalls(ServerWorld world, Layout layout, OtherBaseStyle style) {
+	/** Stage 1: a log post at each corner, full height, and a course of stone between them. */
+	private static void buildFooting(ServerWorld world, Layout layout, OtherBaseStyle style) {
 		for (int a = -HALF; a <= HALF; a++) {
 			for (int b = -HALF; b <= HALF; b++) {
-				boolean corner = Math.abs(a) == HALF && Math.abs(b) == HALF;
-				boolean edge = Math.abs(a) == HALF || Math.abs(b) == HALF;
-				if (corner) {
+				if (isCorner(a, b)) {
 					for (int y = 1; y <= 3; y++) {
 						placeSupported(world, layout.at(a, b, y), style.wood().log.getDefaultState());
 					}
-				} else if (edge && !(a == 0 && b == HALF)) {
-					placeSupported(world, layout.at(a, b, 1), style.wood().planks.getDefaultState());
+				} else if (isWall(a, b) && !isDoorway(a, b, 1)) {
+					placeSupported(world, layout.at(a, b, 1), style.stone().getDefaultState());
+				}
+			}
+		}
+	}
+
+	/** Stage 2: a row of planks on the stone, with gaps left for the windows, and a bed in the corner. */
+	private static void buildWalls(ServerWorld world, Layout layout, OtherBaseStyle style) {
+		for (int a = -HALF; a <= HALF; a++) {
+			for (int b = -HALF; b <= HALF; b++) {
+				if (isWall(a, b) && !isCorner(a, b) && !isDoorway(a, b, 2) && !isWindow(a, b, 2)) {
+					placeSupported(world, layout.at(a, b, 2), style.wood().planks.getDefaultState());
 				}
 			}
 		}
 		placeBed(world, layout);
 	}
 
-	/** Stage 2: the rest of the walls with windows, the door, a roof, and torches inside and out. */
-	private static void buildCabin(ServerWorld world, Layout layout, OtherBaseStyle style) {
-		Direction front = layout.front();
-		for (int y = 2; y <= 3; y++) {
-			for (int a = -HALF; a <= HALF; a++) {
-				for (int b = -HALF; b <= HALF; b++) {
-					boolean edge = Math.abs(a) == HALF || Math.abs(b) == HALF;
-					boolean doorway = a == 0 && b == HALF && y <= 2;
-					if (!edge || doorway) {
-						continue;
-					}
-					boolean window = y == 2 && ((Math.abs(a) == HALF && b == 0) || (a == 0 && b == -HALF));
-					// Above the doorway the planks rest on the frame, not on anything below.
-					BlockState wall = (window ? Blocks.GLASS : style.wood().planks).getDefaultState();
-					if (a == 0 && b == HALF) {
-						place(world, layout.at(a, b, y), wall);
-					} else {
-						placeSupported(world, layout.at(a, b, y), wall);
-					}
+	/** Stage 3: logs laid along the top of every wall, over the door and the window gaps, tying the corners together. */
+	private static void buildTopBeam(ServerWorld world, Layout layout, OtherBaseStyle style) {
+		for (int a = -HALF; a <= HALF; a++) {
+			for (int b = -HALF; b <= HALF; b++) {
+				if (isWall(a, b) && !isCorner(a, b)) {
+					Direction.Axis axis = Math.abs(a) == HALF ? layout.front().getAxis() : layout.right().getAxis();
+					place(world, layout.at(a, b, 3), style.wood().log.getDefaultState().with(PillarBlock.AXIS, axis));
 				}
 			}
 		}
-		// The roof only goes on once all four corners stand.
-		boolean corners = true;
+	}
+
+	/**
+	 * Stages 4 and 5: a pitched roof of stairs, ridge running front to back, hanging one block over every wall. The
+	 * first half fills in the gable ends and lays the lowest two courses; the second lays the rest and a log ridge.
+	 * Courses are counted from the eaves; course 4 is the ridge. Nothing goes up until all four corners stand.
+	 */
+	private static void buildRoof(ServerWorld world, Layout layout, OtherBaseStyle style, int firstCourse, int lastCourse) {
 		for (int a = -HALF; a <= HALF; a += 2 * HALF) {
 			for (int b = -HALF; b <= HALF; b += 2 * HALF) {
-				corners &= world.getBlockState(layout.at(a, b, 3)).isIn(BlockTags.LOGS);
-			}
-		}
-		if (corners) {
-			for (int a = -HALF; a <= HALF; a++) {
-				for (int b = -HALF; b <= HALF; b++) {
-					place(world, layout.at(a, b, 4), style.wood().planks.getDefaultState());
+				if (!world.getBlockState(layout.at(a, b, 3)).isIn(BlockTags.LOGS)) {
+					return;
 				}
 			}
 		}
+		if (firstCourse == 0) {
+			// The gable ends: a triangle of planks over the front and back walls.
+			for (int b = -HALF; b <= HALF; b += 2 * HALF) {
+				for (int y = 4; y <= ROOF_TOP - 1; y++) {
+					int reach = ROOF_TOP - 1 - y;
+					for (int a = -reach; a <= reach; a++) {
+						if (!isWindow(a, b, y)) {
+							place(world, layout.at(a, b, y), style.wood().planks.getDefaultState());
+						}
+					}
+				}
+			}
+		}
+		for (int course = firstCourse; course <= lastCourse; course++) {
+			for (int b = -HALF - 1; b <= HALF + 1; b++) {
+				if (course == 4) {
+					place(world, layout.at(0, b, ROOF_TOP),
+							style.wood().log.getDefaultState().with(PillarBlock.AXIS, layout.front().getAxis()));
+					continue;
+				}
+				int out = HALF + 1 - course;
+				place(world, layout.at(-out, b, 3 + course), roofStair(style, layout.right()));
+				place(world, layout.at(out, b, 3 + course), roofStair(style, layout.right().getOpposite()));
+			}
+		}
+	}
 
-		BlockPos lower = layout.at(0, HALF, 1);
+	/** A roof stair rising toward {@code up}. */
+	private static BlockState roofStair(OtherBaseStyle style, Direction up) {
+		return style.wood().stairs.getDefaultState().with(StairsBlock.FACING, up).with(StairsBlock.HALF, BlockHalf.BOTTOM);
+	}
+
+	/** Stage 6: the door hung, glass in the windows, shutters, and torches inside and either side of the door. */
+	private static void buildFinishing(ServerWorld world, Layout layout, OtherBaseStyle style) {
+		Direction front = layout.front();
+		BlockPos lower = layout.door();
 		if (isClear(world, lower) && isClear(world, lower.up()) && isSolidBelow(world, lower)) {
 			BlockState door = style.wood().door.getDefaultState().with(DoorBlock.FACING, front.getOpposite());
 			world.setBlockState(lower, door.with(DoorBlock.HALF, DoubleBlockHalf.LOWER), Block.NOTIFY_LISTENERS);
 			world.setBlockState(lower.up(), door.with(DoorBlock.HALF, DoubleBlockHalf.UPPER), Block.NOTIFY_LISTENERS);
 		}
+		for (int a = -HALF; a <= HALF; a++) {
+			for (int b = -HALF; b <= HALF; b++) {
+				for (int y = 2; y <= 5; y += 3) {
+					if (isWall(a, b) && isWindow(a, b, y)) {
+						glaze(world, layout.at(a, b, y));
+					}
+				}
+			}
+		}
+		// Open shutters either side of the windows that look out, flat against the wall.
+		BlockState shutter = style.wood().trapdoor.getDefaultState().with(TrapdoorBlock.OPEN, true);
+		for (int side = -1; side <= 1; side += 2) {
+			shutter(world, layout.at(-HALF - 1, side, 2), shutter.with(TrapdoorBlock.FACING, layout.right().getOpposite()));
+			shutter(world, layout.at(side, -HALF - 1, 2), shutter.with(TrapdoorBlock.FACING, front.getOpposite()));
+		}
 		place(world, layout.at(2, 1, 2), Blocks.WALL_TORCH.getDefaultState().with(WallTorchBlock.FACING, layout.right().getOpposite()));
-		place(world, layout.at(1, HALF + 1, 2), Blocks.WALL_TORCH.getDefaultState().with(WallTorchBlock.FACING, front));
+		for (int side = -1; side <= 1; side += 2) {
+			place(world, layout.at(side, HALF + 1, 2), Blocks.WALL_TORCH.getDefaultState().with(WallTorchBlock.FACING, front));
+		}
 	}
 
-	/**
-	 * Stage 3: a furnace with cooked food left in it, more in the chest, and out front either a 3x3 wheat farm or,
-	 * where animals graze nearby, a fenced pen with two of them in it.
-	 */
-	private static void buildLivedIn(ServerWorld world, Layout layout, OtherBaseStyle style, Random random) {
+	/** A shutter only goes up beside a wall that's there to hold it. */
+	private static void shutter(ServerWorld world, BlockPos pos, BlockState state) {
+		BlockPos wall = pos.offset(state.get(TrapdoorBlock.FACING).getOpposite());
+		if (!world.getBlockState(wall).isAir()) {
+			place(world, pos, state);
+		}
+	}
+
+	/** A glass pane in a gap, joined up to the wall either side. */
+	private static void glaze(ServerWorld world, BlockPos pos) {
+		BlockState pane = Blocks.GLASS_PANE.getDefaultState();
+		if (place(world, pos, pane)) {
+			world.setBlockState(pos, Block.postProcessState(pane, world, pos), Block.NOTIFY_LISTENERS);
+		}
+	}
+
+	/** Stage 7: a furnace with cooked food left in it, a lantern hung from the ridge, a rug, and more in the chest. */
+	private static void buildInterior(ServerWorld world, Layout layout, OtherBaseStyle style, Random random) {
 		BlockPos furnacePos = layout.at(0, -2, 1);
 		placeSupported(world, furnacePos, Blocks.FURNACE.getDefaultState().with(AbstractFurnaceBlock.FACING, layout.front()));
 		if (world.getBlockEntity(furnacePos) instanceof FurnaceBlockEntity furnace && furnace.getStack(2).isEmpty()) {
 			furnace.setStack(2, new ItemStack(style.cookedFood(random.nextBoolean()), 2 + random.nextInt(3)));
 			furnace.markDirty();
 		}
+		place(world, layout.at(0, 0, ROOF_TOP - 1), Blocks.LANTERN.getDefaultState().with(LanternBlock.HANGING, true));
+		place(world, layout.at(0, -HALF + 1, ROOF_TOP - 1), Blocks.LANTERN.getDefaultState().with(LanternBlock.HANGING, true));
 
-		if (style.yard() == null) {
-			buildFarm(world, layout, random);
-		} else {
-			buildFence(world, layout, style);
-			addAnimals(world, layout, style.yard(), 2, false, random);
+		// A rug the colour of the bed.
+		DyeColor colour = world.getBlockState(layout.at(-2, -1, 1)).getBlock() instanceof BedBlock bed ? bed.getColor() : DyeColor.RED;
+		Block carpet = Registries.BLOCK.get(new Identifier(colour.getName() + "_carpet"));
+		if (carpet != Blocks.AIR) {
+			for (int a = -1; a <= 0; a++) {
+				for (int b = 0; b <= 1; b++) {
+					place(world, layout.at(a, b, 1), carpet.getDefaultState());
+				}
+			}
 		}
 
 		stock(world, layout.at(2, -2, 1), random,
 				new ItemStack(Items.BREAD, 2 + random.nextInt(4)),
 				new ItemStack(Items.COAL, 4 + random.nextInt(9)),
 				new ItemStack(style.stone(), 20 + random.nextInt(40)),
-				new ItemStack(Items.RAW_IRON, 2 + random.nextInt(4)),
+				new ItemStack(Items.RAW_IRON, 2 + random.nextInt(4)));
+	}
+
+	/** Stage 8: out front, a 3x3 wheat farm or, where animals graze nearby, a fenced pen with two of them in it. */
+	private static void buildYard(ServerWorld world, Layout layout, OtherBaseStyle style, Random random) {
+		if (style.yard() == null) {
+			buildFarm(world, layout, random);
+		} else {
+			buildFence(world, layout, style);
+			addAnimals(world, layout, style.yard(), 2, false, random);
+		}
+		stock(world, layout.at(2, -2, 1), random,
 				style.yard() == null ? new ItemStack(Items.WHEAT_SEEDS, 3 + random.nextInt(8)) : new ItemStack(Items.WHEAT, 4 + random.nextInt(8)));
 	}
 
 	/**
-	 * Stage 4: settled in. The farm gets its fence and ripens, or the pen has a young one; torches go on the corner
+	 * Stage 9: settled in. The farm gets its fence and ripens, or the pen has a young one; torches go on the corner
 	 * posts and a path is worn in front of the door.
 	 */
 	private static void buildSettled(ServerWorld world, Layout layout, OtherBaseStyle style, Random random) {
@@ -569,16 +715,31 @@ public final class OtherBaseBuilder {
 				new ItemStack(Items.BREAD, 2 + random.nextInt(3)));
 	}
 
+	/** Stage 10: flowers planted along the front of the cabin, and a lamp post by the campfire. */
+	private static void buildGarden(ServerWorld world, Layout layout, OtherBaseStyle style, Random random) {
+		Block[] flowers = {Blocks.POPPY, Blocks.DANDELION, Blocks.CORNFLOWER, Blocks.OXEYE_DAISY, Blocks.AZURE_BLUET};
+		Block flower = flowers[random.nextInt(flowers.length)];
+		for (int a : new int[] {-HALF, 2, HALF}) {
+			place(world, layout.at(a, HALF + 1, 1), flower.getDefaultState());
+		}
+		BlockPos post = layout.at(-HALF, HALF + 4, 1);
+		if (placeSupported(world, post, style.wood().fence.getDefaultState())
+				&& place(world, post.up(), style.wood().fence.getDefaultState())) {
+			place(world, post.up(2), Blocks.LANTERN.getDefaultState());
+		}
+	}
+
 	/**
-	 * Stage 5: a second room on the right of the cabin, through a doorway knocked in the wall, with barrels and a
-	 * smoker. Skipped if the ground there won't take it.
+	 * Stage 11: a lean-to on the right of the cabin, under the eaves, through a doorway knocked in the wall, with
+	 * barrels and a smoker. Skipped if the ground there won't take it.
 	 */
 	private static void buildAnnex(ServerWorld world, Layout layout, OtherBaseStyle style) {
 		int a0 = HALF + 1;
 		int a1 = HALF + 5;
 		int b0 = -1;
 		int b1 = HALF;
-		if (!isBuildable(world, layout, a0, a1, b0, b1)) {
+		// Right against the cabin only the walls' height has to be clear; the eaves are already overhead.
+		if (!isBuildable(world, layout, a0 + 1, a1, b0, b1, 5) || !isBuildable(world, layout, a0, a0, b0, b1, 2)) {
 			return;
 		}
 		level(world, layout, a0, a1, b0, b1, Blocks.DIRT);
@@ -587,22 +748,31 @@ public final class OtherBaseBuilder {
 				boolean edge = a == a1 || b == b0 || b == b1;
 				boolean corner = a == a1 && (b == b0 || b == b1);
 				setGround(world, layout.at(a, b, 0), (edge ? style.stone() : style.wood().planks).getDefaultState());
-				if (edge) {
-					for (int y = 1; y <= 3; y++) {
-						placeSupported(world, layout.at(a, b, y), (corner ? style.wood().log : style.wood().planks).getDefaultState());
+				if (corner) {
+					for (int y = 1; y <= 2; y++) {
+						placeSupported(world, layout.at(a, b, y), style.wood().log.getDefaultState());
 					}
+				} else if (edge) {
+					placeSupported(world, layout.at(a, b, 1), style.stone().getDefaultState());
+					placeSupported(world, layout.at(a, b, 2), style.wood().planks.getDefaultState());
 				}
 			}
 		}
-		for (int a = a0; a <= a1; a++) {
-			for (int b = b0; b <= b1; b++) {
-				place(world, layout.at(a, b, 4), style.wood().planks.getDefaultState());
+		for (int b = b0; b <= b1; b++) {
+			place(world, layout.at(a0, b, 3), roofStair(style, layout.right().getOpposite()));
+			for (int a = a0 + 1; a <= a1; a++) {
+				place(world, layout.at(a, b, 3), style.wood().slab.getDefaultState().with(SlabBlock.TYPE, SlabType.BOTTOM));
 			}
 		}
-		replaceWith(world, layout.at(a1, 1, 2), style.wood().planks, Blocks.GLASS.getDefaultState());
+		BlockPos window = layout.at(a1, 1, 2);
+		if (world.getBlockState(window).isOf(style.wood().planks)) {
+			world.setBlockState(window, Blocks.AIR.getDefaultState(), Block.NOTIFY_LISTENERS);
+			glaze(world, window);
+		}
 		// The doorway from the cabin.
 		for (int y = 1; y <= 2; y++) {
 			replaceWith(world, layout.at(HALF, 2, y), style.wood().planks, Blocks.AIR.getDefaultState());
+			replaceWith(world, layout.at(HALF, 2, y), style.stone(), Blocks.AIR.getDefaultState());
 		}
 		placeSupported(world, layout.at(a1 - 1, 0, 1), Blocks.BARREL.getDefaultState());
 		placeSupported(world, layout.at(a1 - 1, 1, 1), Blocks.BARREL.getDefaultState());
@@ -610,12 +780,12 @@ public final class OtherBaseBuilder {
 		place(world, layout.at(a0 + 1, 0, 2), Blocks.WALL_TORCH.getDefaultState().with(WallTorchBlock.FACING, layout.front()));
 	}
 
-	/** Stage 6: an obsidian portal frame out front, never lit. Skipped if the ground there won't take it. */
+	/** Stage 12: an obsidian portal frame out front, never lit. Skipped if the ground there won't take it. */
 	private static void buildPortalFrame(ServerWorld world, Layout layout) {
 		int a = HALF + 3;
 		int b0 = HALF + 2;
 		int b1 = HALF + 5;
-		if (!isBuildable(world, layout, a, a, b0, b1)) {
+		if (!isBuildable(world, layout, a, a, b0, b1, 5)) {
 			return;
 		}
 		level(world, layout, a, a, b0, b1, Blocks.DIRT);
@@ -719,8 +889,8 @@ public final class OtherBaseBuilder {
 
 	// ---- Building beyond the plot ----
 
-	/** Whether the ground over this rectangle is natural, within a block of the cabin floor, and open above. */
-	static boolean isBuildable(ServerWorld world, Layout layout, int a0, int a1, int b0, int b1) {
+	/** Whether the ground over this rectangle is natural, within a block of the cabin floor, and open {@code height} blocks above. */
+	static boolean isBuildable(ServerWorld world, Layout layout, int a0, int a1, int b0, int b1, int height) {
 		int floor = layout.centre().getY();
 		for (int a = a0; a <= a1; a++) {
 			for (int b = b0; b <= b1; b++) {
@@ -732,7 +902,7 @@ public final class OtherBaseBuilder {
 				if (Math.abs(top - floor) > 1 || !isNaturalGround(world, new BlockPos(column.getX(), top, column.getZ()))) {
 					return false;
 				}
-				for (int y = top + 1; y <= floor + 5; y++) {
+				for (int y = top + 1; y <= floor + height; y++) {
 					if (!isClear(world, new BlockPos(column.getX(), y, column.getZ()))) {
 						return false;
 					}

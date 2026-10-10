@@ -66,7 +66,7 @@ final class OtherTraces {
 		if (random.nextInt(10) == 0) {
 			buildPillar(world, other, layout, style, random);
 		}
-		if (!other.wheatFieldDone && other.plantingsSeen >= PLANTINGS_FOR_FIELD && base.otherBaseStage() >= 3) {
+		if (!other.wheatFieldDone && other.plantingsSeen >= PLANTINGS_FOR_FIELD && base.otherBaseStage() >= OtherBaseBuilder.STAGE_YARD) {
 			OtherBaseBuilder.loadArea(world, layout);
 			if (buildWheatField(world, layout, random)) {
 				OtherPlayer.report(world, layout.at(-8, 1, 1), "planted a wheat field, like yours");
@@ -222,7 +222,7 @@ final class OtherTraces {
 		int a1 = -6;
 		int b0 = -1;
 		int b1 = 4;
-		if (!OtherBaseBuilder.isBuildable(world, layout, a0, a1, b0, b1) || !OtherPlayer.unseen(world, layout.at(-8, 1, 1), 24)) {
+		if (!OtherBaseBuilder.isBuildable(world, layout, a0, a1, b0, b1, 5) || !OtherPlayer.unseen(world, layout.at(-8, 1, 1), 24)) {
 			return false;
 		}
 		OtherBaseBuilder.level(world, layout, a0, a1, b0, b1, Blocks.DIRT);

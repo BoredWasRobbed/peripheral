@@ -13,6 +13,7 @@ import net.minecraft.block.enums.DoubleBlockHalf;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
@@ -25,7 +26,11 @@ import java.util.List;
  * What can't be paid for stays broken until the chests have it.
  */
 public final class OtherBaseRepair {
-	private static final int TOP = 5;
+	/** Up to the roof's ridge, and out over the eaves, the side room and the portal. */
+	private static final int TOP = 8;
+	private static final int LEFT = -OtherBaseBuilder.HALF - 1;
+	private static final int RIGHT = OtherBaseBuilder.HALF + 5;
+	private static final int BACK = -OtherBaseBuilder.HALF - 1;
 
 	private OtherBaseRepair() {
 	}
@@ -36,10 +41,10 @@ public final class OtherBaseRepair {
 			return false;
 		}
 		for (int y = 0; y <= TOP; y++) {
-			for (int a = -OtherBaseBuilder.HALF; a <= OtherBaseBuilder.HALF; a++) {
-				for (int b = -OtherBaseBuilder.HALF; b <= OtherBaseBuilder.PLOT_END; b++) {
+			for (int a = LEFT; a <= RIGHT; a++) {
+				for (int b = BACK; b <= OtherBaseBuilder.PLOT_END; b++) {
 					BlockPos pos = layout.at(a, b, y);
-					if (world.isChunkLoaded(pos) && isBroken(world, pos, state.snapshotState(pos))) {
+					if (world.isChunkLoaded(pos) && isBroken(world, a, b, pos, state.snapshotState(pos))) {
 						return true;
 					}
 				}
@@ -53,11 +58,11 @@ public final class OtherBaseRepair {
 		int repaired = 0;
 		int unpaid = 0;
 		for (int y = 0; y <= TOP; y++) {
-			for (int a = -OtherBaseBuilder.HALF; a <= OtherBaseBuilder.HALF; a++) {
-				for (int b = -OtherBaseBuilder.HALF; b <= OtherBaseBuilder.PLOT_END; b++) {
+			for (int a = LEFT; a <= RIGHT; a++) {
+				for (int b = BACK; b <= OtherBaseBuilder.PLOT_END; b++) {
 					BlockPos pos = layout.at(a, b, y);
 					BlockState remembered = state.snapshotState(pos);
-					if (!isBroken(world, pos, remembered) || isSecondHalf(remembered)) {
+					if (!isBroken(world, a, b, pos, remembered) || isSecondHalf(remembered)) {
 						continue;
 					}
 					BlockState target = restored(remembered);
@@ -94,10 +99,24 @@ public final class OtherBaseRepair {
 		}
 	}
 
-	/** The snapshot has a block here and now there's only air or plants. */
-	private static boolean isBroken(ServerWorld world, BlockPos pos, BlockState remembered) {
-		return remembered != null && !remembered.isAir() && remembered.getFluidState().isEmpty()
-				&& !world.getBlockState(pos).isOf(remembered.getBlock()) && OtherBaseBuilder.isClear(world, pos);
+	/**
+	 * The snapshot has a block here and now there's only air or plants. Outside the plot only what was built counts:
+	 * a tree cut down or a bit of ground dug up beside the base isn't something its owner would put back.
+	 */
+	private static boolean isBroken(ServerWorld world, int a, int b, BlockPos pos, BlockState remembered) {
+		if (remembered == null || remembered.isAir() || !remembered.getFluidState().isEmpty()
+				|| world.getBlockState(pos).isOf(remembered.getBlock()) || !OtherBaseBuilder.isClear(world, pos)) {
+			return false;
+		}
+		boolean inPlot = Math.abs(a) <= OtherBaseBuilder.HALF && b >= -OtherBaseBuilder.HALF;
+		boolean sideRoom = a > OtherBaseBuilder.HALF && b >= -1 && b <= OtherBaseBuilder.HALF;
+		return inPlot || sideRoom || !isNatural(remembered);
+	}
+
+	private static boolean isNatural(BlockState state) {
+		return state.isIn(BlockTags.LOGS) || state.isIn(BlockTags.LEAVES) || state.isIn(BlockTags.DIRT) || state.isIn(BlockTags.SAND)
+				|| state.isIn(BlockTags.BASE_STONE_OVERWORLD) || state.isOf(Blocks.GRAVEL) || state.isOf(Blocks.SNOW_BLOCK)
+				|| state.isOf(Blocks.FARMLAND) || state.isOf(Blocks.DIRT_PATH);
 	}
 
 	/** The top of a door or the head of a bed: paid for and placed along with its other half. */
@@ -141,10 +160,21 @@ public final class OtherBaseRepair {
 		return remembered.getBlock().asItem();
 	}
 
-	/** Takes the item from the base's chests, crafting planks out of a matching log if that's what's short. */
+	/**
+	 * Takes the item from the base's chests, crafting planks out of a matching log if that's what's short, and stairs,
+	 * slabs and trapdoors out of planks.
+	 */
 	private static boolean pay(ServerWorld world, OtherBaseBuilder.Layout layout, Item cost) {
 		if (OtherBaseTidy.take(world, layout, cost)) {
 			return true;
+		}
+		for (OtherBaseStyle.Wood wood : OtherBaseStyle.Wood.values()) {
+			if (wood.stairs.asItem() == cost || wood.slab.asItem() == cost || wood.trapdoor.asItem() == cost) {
+				return pay(world, layout, wood.planks.asItem());
+			}
+		}
+		if (cost == Items.GLASS_PANE) {
+			return OtherBaseTidy.take(world, layout, Items.GLASS);
 		}
 		for (OtherBaseStyle.Wood wood : OtherBaseStyle.Wood.values()) {
 			if (wood.planks.asItem() == cost && OtherBaseTidy.take(world, layout, wood.log.asItem())) {
