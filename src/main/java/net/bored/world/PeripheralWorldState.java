@@ -1,11 +1,17 @@
 package net.bored.world;
 
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtHelper;
+import net.minecraft.nbt.NbtList;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.world.PersistentState;
+
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Per-world data saved with the overworld: where the other base stands and how far it has been built. There is
@@ -13,6 +19,7 @@ import net.minecraft.world.PersistentState;
  */
 public class PeripheralWorldState extends PersistentState {
 	private static final String ID = "peripheral";
+	private static final int MAX_PLACED = 1024;
 
 	/** The other base's door, or null if it hasn't been started. */
 	private BlockPos otherBase;
@@ -22,6 +29,8 @@ public class PeripheralWorldState extends PersistentState {
 	private int otherBaseStage;
 	/** World time at which the next stage is due. */
 	private long otherBaseNextStage;
+	/** Blocks players placed around the other base, with the block that was placed, waiting to be tidied away. */
+	private final Map<BlockPos, String> placedNearBase = new LinkedHashMap<>();
 
 	public static PeripheralWorldState get(MinecraftServer server) {
 		return server.getOverworld().getPersistentStateManager().getOrCreate(PeripheralWorldState::fromNbt, PeripheralWorldState::new, ID);
@@ -38,6 +47,11 @@ public class PeripheralWorldState extends PersistentState {
 		}
 		state.otherBaseStage = nbt.getInt("otherBaseStage");
 		state.otherBaseNextStage = nbt.getLong("otherBaseNextStage");
+		NbtList placed = nbt.getList("placedNearBase", NbtElement.COMPOUND_TYPE);
+		for (int i = 0; i < placed.size(); i++) {
+			NbtCompound entry = placed.getCompound(i);
+			state.placedNearBase.put(NbtHelper.toBlockPos(entry.getCompound("pos")), entry.getString("block"));
+		}
 		return state;
 	}
 
@@ -52,6 +66,14 @@ public class PeripheralWorldState extends PersistentState {
 		}
 		nbt.putInt("otherBaseStage", otherBaseStage);
 		nbt.putLong("otherBaseNextStage", otherBaseNextStage);
+		NbtList placed = new NbtList();
+		placedNearBase.forEach((pos, block) -> {
+			NbtCompound entry = new NbtCompound();
+			entry.put("pos", NbtHelper.fromBlockPos(pos));
+			entry.putString("block", block);
+			placed.add(entry);
+		});
+		nbt.put("placedNearBase", placed);
 		return nbt;
 	}
 
@@ -91,7 +113,26 @@ public class PeripheralWorldState extends PersistentState {
 		otherBaseFront = null;
 		otherBaseStage = 0;
 		otherBaseNextStage = 0L;
+		placedNearBase.clear();
 		markDirty();
+	}
+
+	/** Blocks placed by players near the other base that haven't been tidied yet. */
+	public Map<BlockPos, String> placedNearBase() {
+		return Collections.unmodifiableMap(placedNearBase);
+	}
+
+	public void addPlacedNearBase(BlockPos pos, String block) {
+		if (placedNearBase.size() < MAX_PLACED || placedNearBase.containsKey(pos)) {
+			placedNearBase.put(pos.toImmutable(), block);
+			markDirty();
+		}
+	}
+
+	public void removePlacedNearBase(BlockPos pos) {
+		if (placedNearBase.remove(pos) != null) {
+			markDirty();
+		}
 	}
 
 	public void setOtherBaseStage(int stage, long nextStage) {

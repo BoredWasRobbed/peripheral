@@ -50,7 +50,7 @@ public final class OtherBaseBuilder {
 	/** The cabin is 7x7 around its centre. In front of the door: a step, the campfire, and the farm. */
 	static final int HALF = 3;
 	/** Last row of the plot in front of the cabin: step and campfire, then the fenced farm. */
-	private static final int PLOT_END = HALF + 6;
+	static final int PLOT_END = HALF + 6;
 	/** Width of the ring around the plot that must not be a cliff or a terrace. */
 	private static final int MARGIN = 3;
 	/** How far around the plot no player-made block may be. */
@@ -60,7 +60,7 @@ public final class OtherBaseBuilder {
 	/** Nobody may be closer than this, horizontally, while a stage goes up. */
 	private static final double PRIVACY = 40.0;
 	/** Players this close hear it being built. */
-	private static final double HEARING = 80.0;
+	static final double HEARING = 80.0;
 	private static final String[] STAGE_NAMES = {
 			"a cleared spot with a crafting table, chest and campfire",
 			"walls going up and a bed",
@@ -232,19 +232,26 @@ public final class OtherBaseBuilder {
 			return;
 		}
 		PeripheralWorldState state = PeripheralWorldState.get(server);
-		if (state.otherBase() == null || state.otherBaseStage() >= MAX_STAGE) {
+		if (state.otherBase() == null) {
 			return;
 		}
 		ServerWorld world = server.getOverworld();
-		if (world.getTime() < state.otherBaseNextStage()) {
+		boolean tidy = !state.placedNearBase().isEmpty();
+		boolean due = state.otherBaseStage() < MAX_STAGE && world.getTime() >= state.otherBaseNextStage();
+		if (!tidy && !due) {
 			return;
 		}
 		Layout layout = layoutOf(world, state);
 		if (layout == null || !isLoaded(world, layout) || isWatched(world, layout)) {
 			return;
 		}
-		// Late stages catch up one at a time, so a base left alone for days is further along when the player is back.
-		grow(world, state, layout, state.otherBaseNextStage() + stageTicks());
+		if (tidy) {
+			OtherBaseTidy.tidy(world, state, layout);
+		}
+		if (due) {
+			// Late stages catch up one at a time, so a base left alone for days is further along when the player is back.
+			grow(world, state, layout, state.otherBaseNextStage() + stageTicks());
+		}
 	}
 
 	/** Builds the next stage right now, whoever is watching. Returns the new stage, or -1 if it couldn't. */
@@ -281,7 +288,7 @@ public final class OtherBaseBuilder {
 	}
 
 	/** Reads the layout from the saved state; a base built before it could grow is worked out from its door. */
-	private static Layout layoutOf(ServerWorld world, PeripheralWorldState state) {
+	static Layout layoutOf(ServerWorld world, PeripheralWorldState state) {
 		if (state.otherBaseCentre() != null && state.otherBaseFront() != null) {
 			return new Layout(state.otherBaseCentre(), state.otherBaseFront());
 		}
@@ -301,12 +308,12 @@ public final class OtherBaseBuilder {
 		return new Layout(centre, front);
 	}
 
-	private static boolean isLoaded(ServerWorld world, Layout layout) {
+	static boolean isLoaded(ServerWorld world, Layout layout) {
 		return world.isChunkLoaded(layout.at(-HALF, -HALF, 0)) && world.isChunkLoaded(layout.at(HALF, -HALF, 0))
 				&& world.isChunkLoaded(layout.at(-HALF, PLOT_END, 0)) && world.isChunkLoaded(layout.at(HALF, PLOT_END, 0));
 	}
 
-	private static boolean isWatched(ServerWorld world, Layout layout) {
+	static boolean isWatched(ServerWorld world, Layout layout) {
 		BlockPos centre = layout.centre();
 		for (ServerPlayerEntity player : world.getPlayers()) {
 			if (player.isSpectator()) {
@@ -322,7 +329,7 @@ public final class OtherBaseBuilder {
 	}
 
 	/** A few seconds of someone at work: wood going down, a few hits. Only heard, from wherever the player is. */
-	private static void playBuildingSounds(ServerPlayerEntity player, Layout layout, Random random) {
+	static void playBuildingSounds(ServerPlayerEntity player, Layout layout, Random random) {
 		int count = 4 + random.nextInt(4);
 		int delay = 0;
 		for (int i = 0; i < count; i++) {
@@ -565,7 +572,7 @@ public final class OtherBaseBuilder {
 	// ---- Block helpers ----
 
 	/** Air, plants, snow layers: things a block can simply go in place of. */
-	private static boolean isClear(ServerWorld world, BlockPos pos) {
+	static boolean isClear(ServerWorld world, BlockPos pos) {
 		BlockState state = world.getBlockState(pos);
 		return world.getFluidState(pos).isEmpty() && (state.isAir() || state.isReplaceable());
 	}
@@ -578,7 +585,7 @@ public final class OtherBaseBuilder {
 				|| state.isOf(Blocks.GRAVEL) || state.isOf(Blocks.SNOW_BLOCK));
 	}
 
-	private static boolean isSolidBelow(ServerWorld world, BlockPos pos) {
+	static boolean isSolidBelow(ServerWorld world, BlockPos pos) {
 		BlockPos below = pos.down();
 		return world.getBlockState(below).isSideSolidFullSquare(world, below, Direction.UP);
 	}

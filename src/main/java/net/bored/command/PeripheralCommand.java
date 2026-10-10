@@ -127,7 +127,9 @@ public final class PeripheralCommand {
 						stage, OtherBaseBuilder.MAX_STAGE, OtherBaseBuilder.stageName(stage)))
 				.append(Text.literal("[" + coords + "]").styled(style -> style.withColor(Formatting.AQUA).withUnderline(true)
 						.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tp @s " + coords))))
-				.append(Text.literal(", " + next)), false);
+				.append(Text.literal(", " + next))
+				.append(Text.literal(state.placedNearBase().isEmpty() ? ""
+						: String.format(", %d placed blocks waiting to be tidied away", state.placedNearBase().size()))), false);
 		return stage;
 	}
 
