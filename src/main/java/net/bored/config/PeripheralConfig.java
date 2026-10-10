@@ -38,6 +38,9 @@ public class PeripheralConfig {
 	/** Scales the time between events, on top of the preset. Lower means events happen more often. */
 	public double eventIntervalMultiplier = 1.0;
 
+	/** In-game days of play (24000 ticks) between each stage of the other base being built. */
+	public double otherBaseDaysPerStage = 1.0;
+
 	/** Whether players in creative mode are haunted. Spectators never are. */
 	public boolean affectCreativePlayers = false;
 

@@ -22,7 +22,7 @@ Nothing happens during the first two in-game days of a world.
 | `breathing` | In tight, dark places: slow breathing just behind your head. |
 | `torches_out` | At night or underground: the torches around you are broken one by one, furthest first, coming closer. Only ones you aren't looking at. |
 | `running_feet` | In the dark or at night: someone sprints at you from behind and stops right at your back. Turning to face it stops it dead. |
-| `the_other_base` | Once per world, out of sight and far from your home: a small lived-in cabin. A bed like yours, food left in the furnace, a chest of early-game supplies, and a campfire whose smoke gives it away. Nobody is ever home. |
+| `the_other_base` | Once per world, out of sight and far from your home, someone else starts a base: a cleared spot, a crafting table, a chest and a campfire whose smoke gives it away. Then it gets built, one stage per in-game day, only while nobody is within 40 blocks or looking: walls and a bed, then a roof, door and torches, then a furnace with food in it and a wheat farm, then a fence and torch posts. If you're nearby you may hear the building. Nobody is ever home. |
 
 Tier 1 (the first three) can happen any time. Tier 2 needs unease of 25 or more, tier 3 (the figure and breathing) 50 or more, and tier 4 (the last three) 75 or more. World changes only ever touch doors, torches, natural stone and open air, and never happen where you can see them.
 
@@ -51,6 +51,7 @@ Operator commands:
 - `/peripheral debug` toggles an on-screen readout of your unease, the countdown to the next event, and how far and in which direction the last event was. While it's on, every event also posts a chat line with its coordinates (click to teleport) and marks the spot with a column of particles for 30 seconds. Footstep echoes mark each step with smoke.
 - `/peripheral unease [player]` and `/peripheral unease set <0-100> [player]`
 - `/peripheral trigger <effect> [player]` fires an effect immediately, ignoring grace period, tier and cooldown, and always reports where it happened. Effects that go quiet first wait 5 seconds instead of a minute.
+- `/peripheral otherbase` shows where the other base is (click to teleport) and how far along it is. `/peripheral otherbase grow` builds its next stage right away, even while you watch.
 - `/peripheral reload` reloads `config/peripheral.json`.
 
 Config (`config/peripheral.json`):
@@ -63,6 +64,7 @@ Config (`config/peripheral.json`):
 | `gracePeriodDays` | `2.0` | In-game days of world age before anything happens |
 | `uneaseRiseMultiplier` | `1.0` | How fast unease rises, on top of the preset |
 | `eventIntervalMultiplier` | `1.0` | Time between events, on top of the preset; lower is more often |
+| `otherBaseDaysPerStage` | `1.0` | In-game days of play between each stage of the other base |
 | `affectCreativePlayers` | `false` | Whether creative players are haunted |
 | `effects` | `{}` | Per-effect switches, e.g. `{"distant_mining": false}` |
 
