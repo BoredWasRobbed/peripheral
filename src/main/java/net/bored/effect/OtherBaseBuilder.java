@@ -5,6 +5,7 @@ import net.bored.presence.EffectDebug;
 import net.bored.presence.Home;
 import net.bored.presence.Observer;
 import net.bored.presence.PresenceDirector;
+import net.bored.world.OtherPlayerState;
 import net.bored.world.PeripheralWorldState;
 import net.minecraft.block.AbstractFurnaceBlock;
 import net.minecraft.block.BedBlock;
@@ -48,7 +49,7 @@ import net.minecraft.world.Heightmap;
  */
 public final class OtherBaseBuilder {
 	public static final int CHECK_INTERVAL = 30 * 20;
-	public static final int MAX_STAGE = 4;
+	public static final int MAX_STAGE = 6;
 	/** The cabin is 7x7 around its centre. In front of the door: a step, the campfire, and the farm. */
 	static final int HALF = 3;
 	/** Last row of the plot in front of the cabin: step and campfire, then the fenced farm. */
@@ -70,7 +71,9 @@ public final class OtherBaseBuilder {
 			"walls going up and a bed",
 			"walls, roof, door and torches",
 			"a furnace with food in it, and a wheat farm or an animal pen",
-			"a fence round the farm or a young animal in the pen, torch posts and a path"};
+			"a fence round the farm or a young animal in the pen, torch posts and a path",
+			"a second room on the side",
+			"a nether portal frame, never lit"};
 
 	private OtherBaseBuilder() {
 	}
@@ -240,12 +243,14 @@ public final class OtherBaseBuilder {
 			return;
 		}
 		ServerWorld world = server.getOverworld();
-		boolean tidy = !state.placedNearBase().isEmpty();
-		boolean due = state.otherBaseStage() < MAX_STAGE && world.getTime() >= state.otherBaseNextStage();
+		// Only the other you does any of this, and only while it's in the game.
+		boolean online = OtherPlayerState.get(server).online;
+		boolean tidy = online && !state.placedNearBase().isEmpty();
+		boolean due = online && state.otherBaseStage() < MAX_STAGE && world.getTime() >= state.otherBaseNextStage();
 		boolean snapshot = !state.hasBaseSnapshot();
 		Layout known = state.otherBaseCentre() != null && state.otherBaseFront() != null
 				? new Layout(state.otherBaseCentre(), state.otherBaseFront()) : null;
-		boolean repair = known != null && OtherBaseRepair.needsRepair(world, state, known);
+		boolean repair = online && known != null && OtherBaseRepair.needsRepair(world, state, known);
 		if (!tidy && !due && !snapshot && !repair) {
 			return;
 		}
@@ -290,6 +295,11 @@ public final class OtherBaseBuilder {
 
 	private static void grow(ServerWorld world, PeripheralWorldState state, Layout layout, long nextStage) {
 		int stage = state.otherBaseStage() + 1;
+		if (stage == 6 && OtherPlayerState.get(world.getServer()).toolTier < 2) {
+			// The portal frame waits until it has iron tools.
+			state.setOtherBaseStage(state.otherBaseStage(), nextStage);
+			return;
+		}
 		Random random = world.getRandom();
 		build(world, layout, OtherBaseStyle.of(state), stage, random);
 		state.setOtherBaseStage(stage, nextStage);
@@ -381,7 +391,9 @@ public final class OtherBaseBuilder {
 			case 1 -> buildLowWalls(world, layout, style);
 			case 2 -> buildCabin(world, layout, style);
 			case 3 -> buildLivedIn(world, layout, style, random);
-			default -> buildSettled(world, layout, style, random);
+			case 4 -> buildSettled(world, layout, style, random);
+			case 5 -> buildAnnex(world, layout, style);
+			default -> buildPortalFrame(world, layout);
 		}
 	}
 
@@ -557,6 +569,67 @@ public final class OtherBaseBuilder {
 				new ItemStack(Items.BREAD, 2 + random.nextInt(3)));
 	}
 
+	/**
+	 * Stage 5: a second room on the right of the cabin, through a doorway knocked in the wall, with barrels and a
+	 * smoker. Skipped if the ground there won't take it.
+	 */
+	private static void buildAnnex(ServerWorld world, Layout layout, OtherBaseStyle style) {
+		int a0 = HALF + 1;
+		int a1 = HALF + 5;
+		int b0 = -1;
+		int b1 = HALF;
+		if (!isBuildable(world, layout, a0, a1, b0, b1)) {
+			return;
+		}
+		level(world, layout, a0, a1, b0, b1, Blocks.DIRT);
+		for (int a = a0; a <= a1; a++) {
+			for (int b = b0; b <= b1; b++) {
+				boolean edge = a == a1 || b == b0 || b == b1;
+				boolean corner = a == a1 && (b == b0 || b == b1);
+				setGround(world, layout.at(a, b, 0), (edge ? style.stone() : style.wood().planks).getDefaultState());
+				if (edge) {
+					for (int y = 1; y <= 3; y++) {
+						placeSupported(world, layout.at(a, b, y), (corner ? style.wood().log : style.wood().planks).getDefaultState());
+					}
+				}
+			}
+		}
+		for (int a = a0; a <= a1; a++) {
+			for (int b = b0; b <= b1; b++) {
+				place(world, layout.at(a, b, 4), style.wood().planks.getDefaultState());
+			}
+		}
+		replaceWith(world, layout.at(a1, 1, 2), style.wood().planks, Blocks.GLASS.getDefaultState());
+		// The doorway from the cabin.
+		for (int y = 1; y <= 2; y++) {
+			replaceWith(world, layout.at(HALF, 2, y), style.wood().planks, Blocks.AIR.getDefaultState());
+		}
+		placeSupported(world, layout.at(a1 - 1, 0, 1), Blocks.BARREL.getDefaultState());
+		placeSupported(world, layout.at(a1 - 1, 1, 1), Blocks.BARREL.getDefaultState());
+		placeSupported(world, layout.at(a1 - 1, 2, 1), Blocks.SMOKER.getDefaultState().with(AbstractFurnaceBlock.FACING, layout.right().getOpposite()));
+		place(world, layout.at(a0 + 1, 0, 2), Blocks.WALL_TORCH.getDefaultState().with(WallTorchBlock.FACING, layout.front()));
+	}
+
+	/** Stage 6: an obsidian portal frame out front, never lit. Skipped if the ground there won't take it. */
+	private static void buildPortalFrame(ServerWorld world, Layout layout) {
+		int a = HALF + 3;
+		int b0 = HALF + 2;
+		int b1 = HALF + 5;
+		if (!isBuildable(world, layout, a, a, b0, b1)) {
+			return;
+		}
+		level(world, layout, a, a, b0, b1, Blocks.DIRT);
+		BlockState obsidian = Blocks.OBSIDIAN.getDefaultState();
+		for (int b = b0 + 1; b <= b1 - 1; b++) {
+			place(world, layout.at(a, b, 1), obsidian);
+			place(world, layout.at(a, b, 5), obsidian);
+		}
+		for (int y = 2; y <= 4; y++) {
+			place(world, layout.at(a, b0, y), obsidian);
+			place(world, layout.at(a, b1, y), obsidian);
+		}
+	}
+
 	/** A 3x3 wheat farm around a water block, in front of the cabin. */
 	private static void buildFarm(ServerWorld world, Layout layout, Random random) {
 		BlockPos water = layout.at(1, HALF + 4, 0);
@@ -644,6 +717,47 @@ public final class OtherBaseBuilder {
 		return Blocks.RED_BED.getDefaultState();
 	}
 
+	// ---- Building beyond the plot ----
+
+	/** Whether the ground over this rectangle is natural, within a block of the cabin floor, and open above. */
+	static boolean isBuildable(ServerWorld world, Layout layout, int a0, int a1, int b0, int b1) {
+		int floor = layout.centre().getY();
+		for (int a = a0; a <= a1; a++) {
+			for (int b = b0; b <= b1; b++) {
+				BlockPos column = layout.at(a, b, 0);
+				if (!world.isChunkLoaded(column)) {
+					return false;
+				}
+				int top = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ()) - 1;
+				if (Math.abs(top - floor) > 1 || !isNaturalGround(world, new BlockPos(column.getX(), top, column.getZ()))) {
+					return false;
+				}
+				for (int y = top + 1; y <= floor + 5; y++) {
+					if (!isClear(world, new BlockPos(column.getX(), y, column.getZ()))) {
+						return false;
+					}
+				}
+			}
+		}
+		return true;
+	}
+
+	/** Levels a rectangle to the cabin floor, filling gaps with {@code fill}. */
+	static void level(ServerWorld world, Layout layout, int a0, int a1, int b0, int b1, Block fill) {
+		for (int a = a0; a <= a1; a++) {
+			for (int b = b0; b <= b1; b++) {
+				for (int y = 1; y <= 5; y++) {
+					clear(world, layout.at(a, b, y));
+				}
+				BlockPos ground = layout.at(a, b, 0);
+				fillBelow(world, ground, fill.getDefaultState());
+				if (isClear(world, ground)) {
+					world.setBlockState(ground, fill.getDefaultState(), Block.NOTIFY_LISTENERS);
+				}
+			}
+		}
+	}
+
 	// ---- Block helpers ----
 
 	/** Air, plants, snow layers: things a block can simply go in place of. */
@@ -653,7 +767,7 @@ public final class OtherBaseBuilder {
 	}
 
 	/** Ground nobody built: dirt, grass, sand, gravel, stone. */
-	private static boolean isNaturalGround(ServerWorld world, BlockPos pos) {
+	static boolean isNaturalGround(ServerWorld world, BlockPos pos) {
 		BlockState state = world.getBlockState(pos);
 		return world.getFluidState(pos).isEmpty() && world.getBlockEntity(pos) == null
 				&& (state.isIn(BlockTags.DIRT) || state.isIn(BlockTags.SAND) || state.isIn(BlockTags.BASE_STONE_OVERWORLD)
@@ -666,7 +780,7 @@ public final class OtherBaseBuilder {
 	}
 
 	/** Places a block into air or plants if it can stand there. Only listeners are told, so nothing pops off mid-build. */
-	private static boolean place(ServerWorld world, BlockPos pos, BlockState state) {
+	static boolean place(ServerWorld world, BlockPos pos, BlockState state) {
 		if (!isClear(world, pos) || !state.canPlaceAt(world, pos)) {
 			return false;
 		}
@@ -674,13 +788,20 @@ public final class OtherBaseBuilder {
 		return true;
 	}
 
+	/** Swaps one block for another, if the expected block is still there. */
+	private static void replaceWith(ServerWorld world, BlockPos pos, Block expected, BlockState state) {
+		if (world.getBlockState(pos).isOf(expected)) {
+			world.setBlockState(pos, state, Block.NOTIFY_LISTENERS);
+		}
+	}
+
 	/** Same, but only on top of something solid, so nothing is ever left floating. */
-	private static boolean placeSupported(ServerWorld world, BlockPos pos, BlockState state) {
+	static boolean placeSupported(ServerWorld world, BlockPos pos, BlockState state) {
 		return isSolidBelow(world, pos) && place(world, pos, state);
 	}
 
 	/** Swaps a ground block (or fills a gap in the ground) at the plot's level. */
-	private static boolean setGround(ServerWorld world, BlockPos pos, BlockState state) {
+	static boolean setGround(ServerWorld world, BlockPos pos, BlockState state) {
 		if (!isNaturalGround(world, pos) && !isClear(world, pos)) {
 			return false;
 		}
@@ -689,7 +810,7 @@ public final class OtherBaseBuilder {
 	}
 
 	/** Clears plants and natural ground above the plot's level; anything a player built stays. */
-	private static void clear(ServerWorld world, BlockPos pos) {
+	static void clear(ServerWorld world, BlockPos pos) {
 		BlockState state = world.getBlockState(pos);
 		if (!state.isAir() && (isClear(world, pos) || isNaturalGround(world, pos))) {
 			world.setBlockState(pos, Blocks.AIR.getDefaultState(), Block.NOTIFY_LISTENERS);
@@ -697,7 +818,7 @@ public final class OtherBaseBuilder {
 	}
 
 	/** Fills any gap under the plot's level down to the ground, up to three blocks. */
-	private static void fillBelow(ServerWorld world, BlockPos pos, BlockState fill) {
+	static void fillBelow(ServerWorld world, BlockPos pos, BlockState fill) {
 		for (int y = 1; y <= 3; y++) {
 			BlockPos below = pos.down(y);
 			if (!isClear(world, below)) {
@@ -707,7 +828,7 @@ public final class OtherBaseBuilder {
 		}
 	}
 
-	private static boolean holdsWater(ServerWorld world, BlockPos pos) {
+	static boolean holdsWater(ServerWorld world, BlockPos pos) {
 		for (Direction direction : new Direction[] {Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.DOWN}) {
 			BlockState state = world.getBlockState(pos.offset(direction));
 			if (state.isAir() || state.isReplaceable()) {

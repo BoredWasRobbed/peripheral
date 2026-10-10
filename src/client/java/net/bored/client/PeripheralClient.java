@@ -8,6 +8,7 @@ import net.bored.client.effect.Hush;
 import net.bored.client.effect.RunningFeet;
 import net.bored.effect.FigureEffect;
 import net.bored.effect.FootstepEchoEffect;
+import net.bored.effect.OwnerSightingEffect;
 import net.bored.effect.RunningFeetEffect;
 import net.bored.network.PeripheralNetworking;
 import net.bored.presence.PresenceDirector;
@@ -51,6 +52,7 @@ public class PeripheralClient implements ClientModInitializer {
 			case FigureEffect.Watcher.NAME -> Figure.INSTANCE.showWatcher(client, debug);
 			case FigureEffect.BehindYou.NAME -> Figure.INSTANCE.showBehind(client, debug);
 			case FigureEffect.Breathing.NAME -> Breathing.play(client, debug);
+			case OwnerSightingEffect.NAME -> Figure.INSTANCE.showAt(client, pos, debug);
 			case RunningFeetEffect.NAME -> RunningFeet.INSTANCE.start(client, debug);
 			case PresenceDirector.HUSH -> Hush.start(client, param, debug);
 			default -> Peripheral.LOGGER.warn("Unknown presence effect from server: {}", effect);

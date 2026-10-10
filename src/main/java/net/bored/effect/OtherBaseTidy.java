@@ -6,6 +6,7 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.ChestBlock;
+import net.minecraft.block.CropBlock;
 import net.minecraft.block.enums.ChestType;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.ChestBlockEntity;
@@ -55,6 +56,11 @@ public final class OtherBaseTidy {
 		BlockPos centre = worldState.otherBaseCentre();
 		if (centre == null) {
 			return;
+		}
+		boolean nearBase = Math.abs(pos.getX() - centre.getX()) <= RADIUS && Math.abs(pos.getZ() - centre.getZ()) <= RADIUS;
+		if (state.getBlock() instanceof CropBlock && !nearBase) {
+			// The player is farming; the other you notices.
+			OtherPlayer.onPlanted(world.getServer());
 		}
 		double dx = pos.getX() + 0.5 - (centre.getX() + 0.5);
 		double dz = pos.getZ() + 0.5 - (centre.getZ() + 0.5);

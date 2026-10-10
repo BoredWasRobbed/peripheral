@@ -41,6 +41,9 @@ public class PeripheralConfig {
 	/** In-game days of play (24000 ticks) between each stage of the other base being built. */
 	public double otherBaseDaysPerStage = 1.0;
 
+	/** Whether the other you sometimes shows "You joined the game" and "You left the game" in chat. */
+	public boolean otherPlayerJoinMessages = true;
+
 	/** Whether players in creative mode are haunted. Spectators never are. */
 	public boolean affectCreativePlayers = false;
 

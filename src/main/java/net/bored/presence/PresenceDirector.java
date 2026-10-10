@@ -3,6 +3,7 @@ package net.bored.presence;
 import net.bored.Peripheral;
 import net.bored.config.PeripheralConfig;
 import net.bored.effect.OtherBaseBuilder;
+import net.bored.effect.OtherPlayer;
 import net.bored.effect.PresenceEffect;
 import net.bored.effect.PresenceEffects;
 import net.bored.network.PeripheralNetworking;
@@ -70,6 +71,7 @@ public final class PresenceDirector {
 		ticks++;
 		scheduler.tick();
 		if (ticks % OtherBaseBuilder.CHECK_INTERVAL == 0) {
+			OtherPlayer.tick(server);
 			OtherBaseBuilder.tick(server);
 		}
 		if (ticks % CHECK_INTERVAL != 0) {

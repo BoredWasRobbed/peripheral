@@ -2,6 +2,7 @@ package net.bored;
 
 import net.bored.command.PeripheralCommand;
 import net.bored.config.PeripheralConfig;
+import net.bored.effect.OtherPlayer;
 import net.bored.effect.PresenceEffects;
 import net.bored.effect.StaringAnimalEffect;
 import net.bored.presence.PresenceDirector;
@@ -9,6 +10,7 @@ import net.bored.presence.UneaseHolder;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.EntitySleepEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -41,6 +43,14 @@ public class Peripheral implements ModInitializer {
 			UneaseHolder to = (UneaseHolder) newPlayer;
 			to.peripheral$setUnease(from.peripheral$getUnease());
 			to.peripheral$setNextEventTicks(from.peripheral$getNextEventTicks());
+		});
+
+		// When a player dies, a copy of something they carried turns up at the other base.
+		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
+			if (entity instanceof ServerPlayerEntity player) {
+				OtherPlayer.onPlayerDeath(player);
+			}
+			return true;
 		});
 
 		EntitySleepEvents.STOP_SLEEPING.register((entity, sleepingPos) -> {

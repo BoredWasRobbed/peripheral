@@ -25,6 +25,7 @@ public final class PresenceEffects {
 		add(new FigureEffect.Watcher());
 		add(new FigureEffect.BehindYou());
 		add(new FigureEffect.Breathing());
+		add(new OwnerSightingEffect());
 		// Tier 4: Encounter
 		add(new TorchesOutEffect());
 		add(new RunningFeetEffect());

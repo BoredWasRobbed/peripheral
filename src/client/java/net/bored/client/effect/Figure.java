@@ -96,6 +96,19 @@ public final class Figure {
 		debugMessage(player, debug, "the_watcher found nowhere to stand in view");
 	}
 
+	/** At a spot the server chose: the other you, seen from afar where its routine has it. */
+	public void showAt(MinecraftClient client, BlockPos spot, boolean debug) {
+		ClientPlayerEntity player = client.player;
+		if (player == null || client.world == null) {
+			return;
+		}
+		Vec3d feet = ground(client.world, spot.getX() + 0.5, spot.getY(), spot.getZ() + 0.5, 3);
+		if (feet == null) {
+			feet = Vec3d.ofBottomCenter(spot);
+		}
+		show(feet, Mode.WATCHER, debug, player);
+	}
+
 	public void showBehind(MinecraftClient client, boolean debug) {
 		ClientPlayerEntity player = client.player;
 		if (player == null || client.world == null) {

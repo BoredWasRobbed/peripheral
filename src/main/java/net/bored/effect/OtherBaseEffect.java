@@ -93,6 +93,8 @@ public class OtherBaseEffect implements PresenceEffect {
 			state.setOtherBase(door, layout.centre(), front, 0, world.getTime() + OtherBaseBuilder.stageTicks());
 			style.save(state);
 			OtherBaseTidy.snapshot(world, state, layout);
+			// It's in the game right now, of course; it just started building. It came in quietly.
+			OtherPlayer.join(player.getServer(), false);
 			EffectDebug.report(player, NAME, door, "started (" + style.describe() + "): " + OtherBaseBuilder.stageName(0));
 			return true;
 		}

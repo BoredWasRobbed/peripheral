@@ -7,10 +7,12 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.bored.config.PeripheralConfig;
 import net.bored.effect.OtherBaseBuilder;
+import net.bored.effect.OtherPlayer;
 import net.bored.effect.PresenceEffect;
 import net.bored.effect.PresenceEffects;
 import net.bored.presence.PresenceDirector;
 import net.bored.presence.UneaseHolder;
+import net.bored.world.OtherPlayerState;
 import net.bored.world.PeripheralWorldState;
 import net.minecraft.command.CommandSource;
 import net.minecraft.command.argument.EntityArgumentType;
@@ -33,6 +35,7 @@ import static net.minecraft.server.command.CommandManager.literal;
  * /peripheral otherbase                    where the other base is and how far along
  * /peripheral otherbase grow               build its next stage now
  * /peripheral otherbase reset              forget it (blocks stay) so a new one can start
+ * /peripheral otherbase join|leave         bring the other you into the game, or out of it
  * /peripheral debug                        toggle the on-screen readout
  * /peripheral reload                       reload config/peripheral.json
  * </pre>
@@ -64,9 +67,24 @@ public final class PeripheralCommand {
 						.executes(PeripheralCommand::showOtherBase)
 						.then(literal("grow")
 								.executes(PeripheralCommand::growOtherBase))
+						.then(literal("join")
+								.executes(ctx -> {
+									OtherPlayer.join(ctx.getSource().getServer(), true);
+									boolean shown = OtherPlayerState.get(ctx.getSource().getServer()).announced;
+									ctx.getSource().sendFeedback(() -> Text.literal("The other you joined the game"
+											+ (shown ? "" : " (silently this time)")), true);
+									return 1;
+								}))
+						.then(literal("leave")
+								.executes(ctx -> {
+									OtherPlayer.leave(ctx.getSource().getServer());
+									ctx.getSource().sendFeedback(() -> Text.literal("The other you left the game"), true);
+									return 1;
+								}))
 						.then(literal("reset")
 								.executes(ctx -> {
 									PeripheralWorldState.get(ctx.getSource().getServer()).clearOtherBase();
+									OtherPlayerState.get(ctx.getSource().getServer()).reset();
 									ctx.getSource().sendFeedback(() -> Text.literal(
 											"Forgot the other base; its blocks are still there. A new one can now be started"), true);
 									return 1;
@@ -130,6 +148,19 @@ public final class PeripheralCommand {
 				.append(Text.literal(", " + next))
 				.append(Text.literal(state.placedNearBase().isEmpty() ? ""
 						: String.format(", %d placed blocks waiting to be tidied away", state.placedNearBase().size()))), false);
+
+		OtherPlayerState other = OtherPlayerState.get(source.getServer());
+		long now = source.getServer().getOverworld().getTime();
+		String presence = other.online
+				? String.format("The other you is in the game (%s) for another %d minutes%s",
+						OtherPlayer.activity(source.getServer()).describe(), Math.max(0, (other.sessionEnds - now) / 1200),
+						other.announced ? "" : ", joined silently")
+				: String.format("The other you is not in the game; back in about %d minutes", Math.max(0, (other.nextJoin - now) / 1200));
+		String progress = String.format("Mine %d steps%s, path %d blocks, tools tier %d, armor tier %d, %d pillars, %d journal pages, saw you plant %d crops",
+				other.mineDepth, other.mineDone ? " (finished)" : "", other.pathLength, other.toolTier, other.armorTier,
+				other.pillars, other.journal.size(), other.plantingsSeen);
+		source.sendFeedback(() -> Text.literal(presence), false);
+		source.sendFeedback(() -> Text.literal(progress).formatted(Formatting.GRAY), false);
 		return stage;
 	}
 
