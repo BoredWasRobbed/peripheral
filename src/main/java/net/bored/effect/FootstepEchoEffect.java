@@ -1,6 +1,7 @@
 package net.bored.effect;
 
 import net.bored.network.PeripheralNetworking;
+import net.bored.presence.EffectDebug;
 import net.bored.presence.PresenceContext;
 import net.bored.presence.PresenceScheduler;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -31,7 +32,8 @@ public class FootstepEchoEffect implements PresenceEffect {
 	@Override
 	public boolean fire(ServerPlayerEntity player, PresenceContext context, PresenceScheduler scheduler) {
 		int steps = 8 + player.getRandom().nextInt(9);
-		PeripheralNetworking.sendEffect(player, NAME, player.getBlockPos(), steps);
+		EffectDebug.report(player, NAME, player.getBlockPos(), steps + " steps will follow you once you walk; each one is marked with smoke", false);
+		PeripheralNetworking.sendEffect(player, NAME, player.getBlockPos(), steps, EffectDebug.isReporting(player));
 		return true;
 	}
 }

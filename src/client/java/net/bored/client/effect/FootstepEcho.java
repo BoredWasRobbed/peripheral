@@ -4,8 +4,11 @@ import net.bored.presence.Observer;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.sound.BlockSoundGroup;
 import net.minecraft.sound.SoundCategory;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.random.Random;
@@ -41,11 +44,14 @@ public final class FootstepEcho {
 	private int stillTicks;
 	private double sinceLastStep;
 	private Vec3d lastPos;
+	/** Mark each step with smoke and say why the echo ended, for /peripheral debug. */
+	private boolean debug;
 
 	private FootstepEcho() {
 	}
 
-	public void start(int steps) {
+	public void start(int steps, boolean debug) {
+		this.debug = debug;
 		stepsLeft = steps;
 		waitTicks = WAIT_FOR_MOVEMENT_TICKS;
 		started = false;
@@ -106,10 +112,15 @@ public final class FootstepEcho {
 		} else if (started && ++stillTicks > STOPPED_TICKS) {
 			// They stopped, so it stops. Any step already on its way still lands, a beat too late.
 			stepsLeft = 0;
+			debugMessage(player, "you stopped, so it stopped");
 		}
 
 		if (!started && --waitTicks <= 0) {
 			stepsLeft = 0;
+			debugMessage(player, "gave up, you never walked");
+		}
+		if (started && stepsLeft == 0 && stillTicks == 0) {
+			debugMessage(player, "ran out of steps");
 		}
 	}
 
@@ -118,6 +129,7 @@ public final class FootstepEcho {
 		if (Observer.isFocusedOn(player, at.add(0, 1, 0))) {
 			// Looked right at it. Nothing there, and it doesn't come back.
 			stop();
+			debugMessage(player, "you looked at it, so it vanished");
 			return;
 		}
 
@@ -128,9 +140,22 @@ public final class FootstepEcho {
 		BlockSoundGroup group = ground.getSoundGroup();
 		client.world.playSound(at.x, at.y, at.z, group.getStepSound(), SoundCategory.PLAYERS,
 				group.getVolume() * 0.2f, group.getPitch(), false);
+		if (debug) {
+			for (int i = 0; i < 6; i++) {
+				client.world.addParticle(ParticleTypes.LARGE_SMOKE, at.x, at.y + 0.1 + i * 0.3, at.z, 0.0, 0.02, 0.0);
+			}
+			player.sendMessage(Text.literal(String.format("footstep_echo: step %dm behind you (%d left)",
+					Math.round(at.distanceTo(player.getPos())), stepsLeft)).formatted(Formatting.GRAY), true);
+		}
 	}
 
 	/** The first spot along the player's recent path that's far enough back, or straight behind them if they haven't come far. */
+	private void debugMessage(ClientPlayerEntity player, String why) {
+		if (debug) {
+			player.sendMessage(Text.literal("[Peripheral] footstep_echo ended: " + why).formatted(Formatting.GRAY), false);
+		}
+	}
+
 	private Vec3d followerPosition(ClientPlayerEntity player) {
 		Vec3d now = player.getPos();
 		for (Vec3d point : path) {

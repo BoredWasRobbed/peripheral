@@ -1,5 +1,6 @@
 package net.bored.effect;
 
+import net.bored.presence.EffectDebug;
 import net.bored.presence.Observer;
 import net.bored.presence.PresenceContext;
 import net.bored.presence.PresenceScheduler;
@@ -62,6 +63,7 @@ public class StaringAnimalEffect implements PresenceEffect {
 		animal.getNavigation().stop();
 		animal.setAiDisabled(true);
 		animal.addCommandTag(TAG);
+		EffectDebug.report(player, NAME, animal.getBlockPos(), animal.getName().getString() + " is staring at you");
 
 		int[] ticks = {0};
 		scheduler.repeat(() -> {

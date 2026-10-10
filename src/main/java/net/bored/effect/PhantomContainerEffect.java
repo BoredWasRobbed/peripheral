@@ -1,5 +1,6 @@
 package net.bored.effect;
 
+import net.bored.presence.EffectDebug;
 import net.bored.presence.Observer;
 import net.bored.presence.PresenceContext;
 import net.bored.presence.PresenceScheduler;
@@ -71,6 +72,7 @@ public class PhantomContainerEffect implements PresenceEffect {
 			float pitch = 0.9f + random.nextFloat() * 0.1f;
 
 			EffectSounds.playTo(player, first, at, sounds.volume, pitch);
+			EffectDebug.report(player, NAME, pos, "sounds from " + state.getBlock().getName().getString());
 			scheduler.schedule(sounds.holdTicks + random.nextInt(sounds.holdTicks), () ->
 					EffectSounds.playTo(player, second, at, sounds.volume, pitch));
 			return true;

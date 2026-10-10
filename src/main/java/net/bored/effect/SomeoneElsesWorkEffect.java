@@ -1,5 +1,6 @@
 package net.bored.effect;
 
+import net.bored.presence.EffectDebug;
 import net.bored.presence.Home;
 import net.bored.presence.Observer;
 import net.bored.presence.PresenceContext;
@@ -74,6 +75,7 @@ public class SomeoneElsesWorkEffect implements PresenceEffect {
 			BlockPos pos = surfaceSpot(player, world, random, 20, 40);
 			if (pos != null && Blocks.TORCH.getDefaultState().canPlaceAt(world, pos)) {
 				world.setBlockState(pos, Blocks.TORCH.getDefaultState(), Block.NOTIFY_ALL);
+				EffectDebug.report(player, NAME, pos, "placed a lone torch");
 				return true;
 			}
 		}
@@ -91,9 +93,11 @@ public class SomeoneElsesWorkEffect implements PresenceEffect {
 			for (int y = 0; y < height; y++) {
 				world.setBlockState(base.up(y), Blocks.DIRT.getDefaultState(), Block.NOTIFY_ALL);
 			}
-			if (random.nextBoolean()) {
+			boolean torch = random.nextBoolean();
+			if (torch) {
 				world.setBlockState(base.up(height), Blocks.TORCH.getDefaultState(), Block.NOTIFY_ALL);
 			}
+			EffectDebug.report(player, NAME, base, "built a " + height + "-high dirt pillar" + (torch ? " with a torch" : ""));
 			return true;
 		}
 		return false;
@@ -127,11 +131,13 @@ public class SomeoneElsesWorkEffect implements PresenceEffect {
 				BlockState wallTorch = Blocks.WALL_TORCH.getDefaultState().with(WallTorchBlock.FACING, side.getOpposite());
 				if (wallTorch.canPlaceAt(world, floor.up())) {
 					world.setBlockState(floor.up(), wallTorch, Block.NOTIFY_ALL);
+					EffectDebug.report(player, NAME, floor.up(), "placed a cave wall torch");
 					return true;
 				}
 			}
 			if (Blocks.TORCH.getDefaultState().canPlaceAt(world, floor)) {
 				world.setBlockState(floor, Blocks.TORCH.getDefaultState(), Block.NOTIFY_ALL);
+				EffectDebug.report(player, NAME, floor, "placed a cave torch");
 				return true;
 			}
 		}
@@ -163,6 +169,7 @@ public class SomeoneElsesWorkEffect implements PresenceEffect {
 			for (BlockPos block : dug) {
 				world.setBlockState(block, Blocks.CAVE_AIR.getDefaultState(), Block.NOTIFY_ALL);
 			}
+			EffectDebug.report(player, NAME, floor.offset(heading), "dug a " + dug.size() / 2 + "-block 1x2 tunnel heading " + heading.asString());
 			return true;
 		}
 		return false;

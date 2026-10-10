@@ -24,9 +24,9 @@ The first three are tier 1 and can happen any time. The rest are tier 2 and need
 
 Operator commands:
 
-- `/peripheral debug` toggles an on-screen readout of your unease, the countdown to the next event and why.
+- `/peripheral debug` toggles an on-screen readout of your unease, the countdown to the next event, and how far and in which direction the last event was. While it's on, every event also posts a chat line with its coordinates (click to teleport) and marks the spot with a column of particles for 30 seconds. Footstep echoes mark each step with smoke.
 - `/peripheral unease [player]` and `/peripheral unease set <0-100> [player]`
-- `/peripheral trigger <effect> [player]` fires an effect immediately, ignoring grace period, tier and cooldown.
+- `/peripheral trigger <effect> [player]` fires an effect immediately, ignoring grace period, tier and cooldown, and always reports where it happened.
 - `/peripheral reload` reloads `config/peripheral.json`.
 
 Config (`config/peripheral.json`):

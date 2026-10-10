@@ -8,6 +8,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.random.Random;
 
 import java.util.ArrayList;
@@ -43,7 +44,9 @@ public final class PresenceDirector {
 	private final PresenceScheduler scheduler = new PresenceScheduler();
 	private final Map<UUID, Map<String, Long>> lastFired = new HashMap<>();
 	private final Map<UUID, String> lastEffect = new HashMap<>();
+	private final Map<UUID, BlockPos> lastLocation = new HashMap<>();
 	private final Set<UUID> debugging = new HashSet<>();
+	private ServerPlayerEntity forcing;
 	private long ticks;
 
 	private PresenceDirector() {
@@ -179,7 +182,11 @@ public final class PresenceDirector {
 	}
 
 	private boolean start(ServerPlayerEntity player, PresenceEffect effect, PresenceContext context) {
+		BlockPos previousLocation = lastLocation.remove(player.getUuid());
 		if (!effect.fire(player, context, scheduler)) {
+			if (previousLocation != null) {
+				lastLocation.put(player.getUuid(), previousLocation);
+			}
 			return false;
 		}
 		lastFired.computeIfAbsent(player.getUuid(), id -> new HashMap<>()).put(effect.name(), ticks);
@@ -194,7 +201,26 @@ public final class PresenceDirector {
 
 	/** Fires an effect now, ignoring tier, cooldown, grace period and config. Used by the trigger command. */
 	public boolean forceEffect(ServerPlayerEntity player, PresenceEffect effect) {
-		return start(player, effect, PresenceContext.sample(player));
+		forcing = player;
+		try {
+			return start(player, effect, PresenceContext.sample(player));
+		} finally {
+			forcing = null;
+		}
+	}
+
+	/** Whether effects should tell this player where they happened: debug readout on, or fired with the trigger command. */
+	boolean shouldReport(ServerPlayerEntity player) {
+		return player == forcing || debugging.contains(player.getUuid());
+	}
+
+	void rememberLocation(ServerPlayerEntity player, String effect, BlockPos pos) {
+		lastEffect.put(player.getUuid(), effect);
+		lastLocation.put(player.getUuid(), pos.toImmutable());
+	}
+
+	PresenceScheduler scheduler() {
+		return scheduler;
 	}
 
 	public void onJoin(ServerPlayerEntity player) {
@@ -207,6 +233,7 @@ public final class PresenceDirector {
 	public void onLeave(ServerPlayerEntity player) {
 		debugging.remove(player.getUuid());
 		lastEffect.remove(player.getUuid());
+		lastLocation.remove(player.getUuid());
 	}
 
 	public void onSlept(ServerPlayerEntity player) {
@@ -226,6 +253,15 @@ public final class PresenceDirector {
 		return server.getOverworld().getTime() < PeripheralConfig.get().gracePeriodDays * TICKS_PER_DAY;
 	}
 
+	private String lastEffectSummary(ServerPlayerEntity player) {
+		String name = lastEffect.get(player.getUuid());
+		if (name == null) {
+			return "none";
+		}
+		BlockPos pos = lastLocation.get(player.getUuid());
+		return pos == null ? name : name + " " + EffectDebug.describe(player, pos);
+	}
+
 	private void showDebug(ServerPlayerEntity player, PresenceContext context, boolean grace, boolean hauntable) {
 		UneaseHolder holder = (UneaseHolder) player;
 		float unease = holder.peripheral$getUnease();
@@ -241,7 +277,7 @@ public final class PresenceDirector {
 		Text text = Text.literal(String.format("Unease %.1f (tier %d) ", unease, tierFor(unease))).formatted(Formatting.DARK_RED)
 				.append(Text.literal(String.format("next %ds ", holder.peripheral$getNextEventTicks() / 20)).formatted(Formatting.GRAY))
 				.append(Text.literal(state.toString().trim()).formatted(Formatting.DARK_GRAY))
-				.append(Text.literal(" last: " + lastEffect.getOrDefault(player.getUuid(), "none")).formatted(Formatting.GRAY));
+				.append(Text.literal(" last: " + lastEffectSummary(player)).formatted(Formatting.GRAY));
 		player.sendMessage(text, true);
 	}
 }

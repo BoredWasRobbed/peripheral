@@ -1,5 +1,6 @@
 package net.bored.effect;
 
+import net.bored.presence.EffectDebug;
 import net.bored.presence.Home;
 import net.bored.presence.Observer;
 import net.bored.presence.PresenceContext;
@@ -76,6 +77,7 @@ public class LeftOpenEffect implements PresenceEffect {
 				continue;
 			}
 			open(world, pos);
+			EffectDebug.report(player, NAME, pos, "opened " + world.getBlockState(pos).getBlock().getName().getString());
 			return true;
 		}
 		return false;

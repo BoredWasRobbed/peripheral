@@ -1,5 +1,6 @@
 package net.bored.effect;
 
+import net.bored.presence.EffectDebug;
 import net.bored.presence.PresenceContext;
 import net.bored.presence.PresenceScheduler;
 import net.minecraft.block.BlockState;
@@ -72,6 +73,7 @@ public class DistantMiningEffect implements PresenceEffect {
 				pos = pos.offset(heading);
 			}
 		}
+		EffectDebug.report(player, NAME, start, "digging " + blocks + " blocks heading " + heading.asString());
 		return true;
 	}
 

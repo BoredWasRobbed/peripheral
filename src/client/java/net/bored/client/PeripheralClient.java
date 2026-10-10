@@ -18,16 +18,17 @@ public class PeripheralClient implements ClientModInitializer {
 			String effect = buf.readString();
 			BlockPos pos = buf.readBlockPos();
 			int param = buf.readVarInt();
-			client.execute(() -> handleEffect(client, effect, pos, param));
+			boolean debug = buf.readBoolean();
+			client.execute(() -> handleEffect(client, effect, pos, param, debug));
 		});
 
 		ClientTickEvents.END_CLIENT_TICK.register(FootstepEcho.INSTANCE::tick);
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> FootstepEcho.INSTANCE.reset());
 	}
 
-	private static void handleEffect(MinecraftClient client, String effect, BlockPos pos, int param) {
+	private static void handleEffect(MinecraftClient client, String effect, BlockPos pos, int param, boolean debug) {
 		switch (effect) {
-			case FootstepEchoEffect.NAME -> FootstepEcho.INSTANCE.start(param);
+			case FootstepEchoEffect.NAME -> FootstepEcho.INSTANCE.start(param, debug);
 			default -> Peripheral.LOGGER.warn("Unknown presence effect from server: {}", effect);
 		}
 	}

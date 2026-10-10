@@ -18,7 +18,7 @@ public final class PeripheralNetworking {
 	private PeripheralNetworking() {
 	}
 
-	public static void sendEffect(ServerPlayerEntity player, String effect, BlockPos pos, int param) {
+	public static void sendEffect(ServerPlayerEntity player, String effect, BlockPos pos, int param, boolean debug) {
 		if (!ServerPlayNetworking.canSend(player, EFFECT)) {
 			return;
 		}
@@ -26,6 +26,7 @@ public final class PeripheralNetworking {
 		buf.writeString(effect);
 		buf.writeBlockPos(pos);
 		buf.writeVarInt(param);
+		buf.writeBoolean(debug);
 		ServerPlayNetworking.send(player, EFFECT, buf);
 	}
 }

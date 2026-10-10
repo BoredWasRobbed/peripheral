@@ -1,5 +1,6 @@
 package net.bored.effect;
 
+import net.bored.presence.EffectDebug;
 import net.bored.presence.Home;
 import net.bored.presence.Observer;
 import net.bored.presence.PresenceContext;
@@ -81,6 +82,7 @@ public class TorchOutEffect implements PresenceEffect {
 			BlockState state = world.getBlockState(pos);
 			world.removeBlock(pos, false);
 			Block.dropStack(world, pos, new ItemStack(state.getBlock().asItem()));
+			EffectDebug.report(player, NAME, pos, "knocked down " + state.getBlock().getName().getString());
 			return true;
 		}
 		return false;
