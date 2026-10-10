@@ -21,6 +21,10 @@ public final class PresenceEffects {
 		add(new TorchOutEffect());
 		add(new SomeoneElsesWorkEffect());
 		add(new StaringAnimalEffect());
+		// Tier 3: Presence
+		add(new FigureEffect.Watcher());
+		add(new FigureEffect.BehindYou());
+		add(new FigureEffect.Breathing());
 	}
 
 	private static void add(PresenceEffect effect) {

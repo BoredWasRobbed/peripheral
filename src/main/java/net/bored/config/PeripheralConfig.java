@@ -29,6 +29,9 @@ public class PeripheralConfig {
 	/** Whether effects may change blocks: opening doors, taking torches, building and digging. */
 	public boolean allowWorldChanges = true;
 
+	/** Whether the figure can appear. */
+	public boolean allowFigure = true;
+
 	/** Scales how fast unease rises, on top of the preset. 1.0 is the designed pace. */
 	public double uneaseRiseMultiplier = 1.0;
 

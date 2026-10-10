@@ -25,6 +25,11 @@ public interface PresenceEffect {
 		return false;
 	}
 
+	/** Whether this effect shows the figure. These can all be turned off with one config switch. */
+	default boolean showsFigure() {
+		return false;
+	}
+
 	/** Minimum ticks before this effect can happen to the same player again. */
 	default int cooldownTicks() {
 		return 20 * 60 * 15;

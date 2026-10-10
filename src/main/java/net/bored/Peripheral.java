@@ -4,14 +4,19 @@ import net.bored.command.PeripheralCommand;
 import net.bored.config.PeripheralConfig;
 import net.bored.effect.PresenceEffects;
 import net.bored.effect.StaringAnimalEffect;
+import net.bored.network.PeripheralNetworking;
 import net.bored.presence.PresenceDirector;
 import net.bored.presence.UneaseHolder;
+import net.bored.world.FigureSkinFetcher;
+import net.bored.world.PeripheralWorldState;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.EntitySleepEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.S2CPlayChannelEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -29,6 +34,7 @@ public class Peripheral implements ModInitializer {
 	public void onInitialize() {
 		PeripheralConfig.load();
 		PresenceEffects.register();
+		PeripheralSounds.register();
 
 		ServerTickEvents.END_SERVER_TICK.register(PresenceDirector.INSTANCE::tick);
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> PresenceDirector.INSTANCE.onJoin(handler.player));
@@ -52,6 +58,16 @@ public class Peripheral implements ModInitializer {
 		ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
 			if (entity instanceof MobEntity mob && mob.getCommandTags().contains(StaringAnimalEffect.TAG)) {
 				StaringAnimalEffect.release(mob);
+			}
+		});
+
+		// Borrow a skin for the figure when the world is first opened (retried on later starts until the figure is seen).
+		ServerLifecycleEvents.SERVER_STARTED.register(FigureSkinFetcher::fetchIfNeeded);
+
+		// Tell each client which skin the figure wears here, once it says it understands our packets.
+		S2CPlayChannelEvents.REGISTER.register((handler, sender, server, channels) -> {
+			if (channels.contains(PeripheralNetworking.FIGURE_SKIN)) {
+				PeripheralNetworking.sendFigureSkin(handler.player, PeripheralWorldState.get(server));
 			}
 		});
 

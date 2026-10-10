@@ -144,7 +144,8 @@ public final class PresenceDirector {
 		for (PresenceEffect effect : PresenceEffects.all()) {
 			Long last = fired.get(effect.name());
 			boolean cooledDown = last == null || ticks - last >= effect.cooldownTicks();
-			boolean allowed = config.isEffectEnabled(effect.name()) && (config.allowWorldChanges || !effect.changesWorld());
+			boolean allowed = config.isEffectEnabled(effect.name()) && (config.allowWorldChanges || !effect.changesWorld())
+					&& (config.allowFigure || !effect.showsFigure());
 			if (effect.tier() <= maxTier && cooledDown && allowed && effect.canFire(player, context)) {
 				candidates.add(effect);
 			}
