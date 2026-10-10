@@ -62,7 +62,8 @@ public final class OtherBaseTidy {
 			return;
 		}
 		String block = Registries.BLOCK.getId(state.getBlock()).toString();
-		if (block.equals(worldState.snapshotBlock(pos))) {
+		BlockState remembered = worldState.snapshotState(pos);
+		if (remembered != null && remembered.isOf(state.getBlock())) {
 			// The same block back where it was: as far as the owner can tell, nothing changed.
 			worldState.removePlacedNearBase(pos);
 			return;
@@ -72,12 +73,13 @@ public final class OtherBaseTidy {
 
 	/**
 	 * Remembers how the surface around the base looks now: when it's started, after each stage goes up, and once for
-	 * bases from before snapshots existed. Blocks still waiting to be tidied are left out, so they stay unfamiliar.
+	 * bases from before snapshots existed. Blocks still waiting to be tidied are left out, so they stay unfamiliar,
+	 * and anything the old snapshot had where there's now only air is kept, so damage is never taken as the new normal.
 	 */
 	static void snapshot(ServerWorld world, PeripheralWorldState state, OtherBaseBuilder.Layout layout) {
 		BlockPos centre = layout.centre();
 		int radius = (int) Math.ceil(RADIUS);
-		Map<Long, String> snapshot = new HashMap<>();
+		Map<Long, BlockState> snapshot = new HashMap<>();
 		BlockPos.Mutable pos = new BlockPos.Mutable();
 		for (int dx = -radius; dx <= radius; dx++) {
 			for (int dz = -radius; dz <= radius; dz++) {
@@ -87,8 +89,11 @@ public final class OtherBaseTidy {
 				for (int y = centre.getY() - SURFACE_DEPTH; y <= centre.getY() + SNAPSHOT_HEIGHT; y++) {
 					pos.set(centre.getX() + dx, y, centre.getZ() + dz);
 					BlockState block = world.getBlockState(pos);
-					if (!block.isAir() && !state.placedNearBase().containsKey(pos)) {
-						snapshot.put(pos.asLong(), Registries.BLOCK.getId(block.getBlock()).toString());
+					BlockState before = state.snapshotState(pos);
+					if (before != null && OtherBaseBuilder.isClear(world, pos)) {
+						snapshot.put(pos.asLong(), before);
+					} else if (!block.isAir() && !state.placedNearBase().containsKey(pos)) {
+						snapshot.put(pos.asLong(), block);
 					}
 				}
 			}
@@ -150,7 +155,7 @@ public final class OtherBaseTidy {
 	}
 
 	/** Puts the items in the base's chests, adding chests as they fill. Returns what couldn't be stored anywhere. */
-	private static List<ItemStack> store(ServerWorld world, OtherBaseBuilder.Layout layout, List<ItemStack> items) {
+	static List<ItemStack> store(ServerWorld world, OtherBaseBuilder.Layout layout, List<ItemStack> items) {
 		List<Storage> storages = storages(world, layout);
 		List<ItemStack> leftover = new ArrayList<>();
 		for (ItemStack stack : items) {
@@ -175,7 +180,7 @@ public final class OtherBaseTidy {
 	}
 
 	/** The base's original chest, then the places more chests can go, in the order they fill. */
-	private static List<Storage> storages(ServerWorld world, OtherBaseBuilder.Layout layout) {
+	static List<Storage> storages(ServerWorld world, OtherBaseBuilder.Layout layout) {
 		Direction front = layout.front();
 		Direction right = layout.right();
 		List<Storage> storages = new ArrayList<>();
@@ -192,6 +197,24 @@ public final class OtherBaseTidy {
 			}
 		}
 		return storages;
+	}
+
+	/** Takes one of this item out of the base's chests. Returns false if there is none. */
+	static boolean take(ServerWorld world, OtherBaseBuilder.Layout layout, Item item) {
+		for (Storage storage : storages(world, layout)) {
+			for (BlockPos pos : storage.positions()) {
+				if (world.getBlockEntity(pos) instanceof ChestBlockEntity chest) {
+					for (int i = 0; i < chest.size(); i++) {
+						if (chest.getStack(i).isOf(item)) {
+							chest.removeStack(i, 1);
+							chest.markDirty();
+							return true;
+						}
+					}
+				}
+			}
+		}
+		return false;
 	}
 
 	private static void insert(Inventory inventory, ItemStack stack) {
@@ -214,7 +237,7 @@ public final class OtherBaseTidy {
 	}
 
 	/** One chest, or a double chest whose left half is at {@code pos} (the right half is beside it, as vanilla pairs them). */
-	private record Storage(BlockPos pos, Direction facing, boolean pair) {
+	record Storage(BlockPos pos, Direction facing, boolean pair) {
 		BlockPos other() {
 			return pos.offset(facing.rotateYClockwise());
 		}

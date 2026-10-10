@@ -243,7 +243,10 @@ public final class OtherBaseBuilder {
 		boolean tidy = !state.placedNearBase().isEmpty();
 		boolean due = state.otherBaseStage() < MAX_STAGE && world.getTime() >= state.otherBaseNextStage();
 		boolean snapshot = !state.hasBaseSnapshot();
-		if (!tidy && !due && !snapshot) {
+		Layout known = state.otherBaseCentre() != null && state.otherBaseFront() != null
+				? new Layout(state.otherBaseCentre(), state.otherBaseFront()) : null;
+		boolean repair = known != null && OtherBaseRepair.needsRepair(world, state, known);
+		if (!tidy && !due && !snapshot && !repair) {
 			return;
 		}
 		Layout layout = layoutOf(world, state);
@@ -254,13 +257,15 @@ public final class OtherBaseBuilder {
 			loadArea(world, layout);
 			OtherBaseTidy.snapshot(world, state, layout);
 		}
-		if ((!tidy && !due) || isWatched(world, layout)) {
+		if ((!tidy && !due && !repair) || isWatched(world, layout)) {
 			return;
 		}
 		loadArea(world, layout);
 		if (tidy) {
 			OtherBaseTidy.tidy(world, state, layout);
 		}
+		// Whatever is broken (including anything the tidying just cleared away) is put back.
+		OtherBaseRepair.repair(world, state, layout);
 		if (due) {
 			// Late stages catch up one at a time, so a base left alone for days is further along when the player is back.
 			grow(world, state, layout, state.otherBaseNextStage() + stageTicks());
