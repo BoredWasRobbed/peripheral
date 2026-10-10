@@ -22,7 +22,8 @@ import java.util.Map;
 
 /**
  * What the other base is built from, picked from its surroundings when it's started: the wood of the nearest trees,
- * sandstone instead of cobblestone on sand, and a pen of whatever animals graze nearby instead of a wheat farm.
+ * sandstone instead of cobblestone on sand, and a pen of whatever animals graze nearby (or, in the snow, always a pen)
+ * instead of a wheat farm.
  *
  * @param yard the animals kept in a pen out front, or null for a wheat farm
  */
@@ -31,6 +32,7 @@ public record OtherBaseStyle(Wood wood, Block stone, EntityType<?> yard) {
 	private static final int TREE_RADIUS = 48;
 	private static final int ANIMAL_RADIUS = 40;
 	private static final EntityType<?>[] LIVESTOCK = {EntityType.COW, EntityType.SHEEP, EntityType.PIG, EntityType.CHICKEN};
+	private static final EntityType<?>[] SNOW_LIVESTOCK = {EntityType.COW, EntityType.SHEEP};
 
 	public enum Wood {
 		OAK(Blocks.OAK_LOG, Blocks.OAK_PLANKS, Blocks.OAK_DOOR, Blocks.OAK_FENCE, Blocks.OAK_FENCE_GATE,
@@ -163,6 +165,11 @@ public record OtherBaseStyle(Wood wood, Block stone, EntityType<?> yard) {
 		}
 		EntityType<?> yard = animals.entrySet().stream().filter(entry -> entry.getValue() >= 2)
 				.max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).orElse(null);
+		// Nothing grows well in the snow: there it's always animals, whatever is around, or else a few it brought along.
+		if (yard == null && world.getBiome(centre).value().isCold(centre)) {
+			yard = animals.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey)
+					.orElse(SNOW_LIVESTOCK[world.getRandom().nextInt(SNOW_LIVESTOCK.length)]);
+		}
 		return new OtherBaseStyle(wood, stone, yard);
 	}
 

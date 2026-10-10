@@ -71,7 +71,9 @@ public final class OtherBaseBuilder {
 	/** The cabin is 7x7 around its centre. In front of the door: a step, the campfire, and the farm. */
 	static final int HALF = 3;
 	/** Last row of the plot in front of the cabin: step and campfire, then the fenced farm. */
-	static final int PLOT_END = HALF + 6;
+	static final int PLOT_END = HALF + 8;
+	/** The near side of the farm or pen, leaving three clear rows to walk out of the door. */
+	static final int YARD = HALF + 4;
 	/** Width of the ring around the plot that must not be a cliff or a terrace. */
 	private static final int MARGIN = 3;
 	/** How far around the plot no player-made block may be. */
@@ -489,7 +491,7 @@ public final class OtherBaseBuilder {
 		placeSupported(world, layout.at(1, -2, 1), Blocks.CRAFTING_TABLE.getDefaultState());
 		placeSupported(world, layout.at(2, -2, 1), Blocks.CHEST.getDefaultState().with(ChestBlock.FACING, front));
 		place(world, layout.at(-2, 2, 1), Blocks.TORCH.getDefaultState());
-		placeSupported(world, layout.at(-2, HALF + 2, 1),
+		placeSupported(world, layout.at(-HALF, HALF + 3, 1),
 				Blocks.CAMPFIRE.getDefaultState().with(CampfireBlock.FACING, layout.right()).with(CampfireBlock.LIT, true));
 
 		ItemStack pickaxe = new ItemStack(Items.WOODEN_PICKAXE);
@@ -680,7 +682,7 @@ public final class OtherBaseBuilder {
 		if (style.yard() == null) {
 			buildFence(world, layout, style);
 			for (int a = 0; a <= 2; a++) {
-				for (int b = HALF + 3; b <= HALF + 5; b++) {
+				for (int b = YARD + 1; b <= YARD + 3; b++) {
 					BlockPos crop = layout.at(a, b, 1);
 					if (world.getBlockState(crop).isOf(Blocks.WHEAT)) {
 						world.setBlockState(crop, Blocks.WHEAT.getDefaultState().with(CropBlock.AGE, CropBlock.MAX_AGE), Block.NOTIFY_LISTENERS);
@@ -692,17 +694,18 @@ public final class OtherBaseBuilder {
 		}
 
 		for (int a = -1; a <= 3; a += 4) {
-			for (int b = HALF + 2; b <= PLOT_END; b += PLOT_END - HALF - 2) {
+			for (int b = YARD; b <= PLOT_END; b += PLOT_END - YARD) {
 				BlockPos post = layout.at(a, b, 1);
 				if (world.getBlockState(post).isIn(BlockTags.FENCES)) {
 					place(world, post.up(), Blocks.TORCH.getDefaultState());
 				}
 			}
 		}
-		for (int a = -2; a <= 1; a++) {
-			BlockPos path = layout.at(a, HALF + 1, 0);
-			if (world.getBlockState(path).isOf(Blocks.GRASS_BLOCK) || world.getBlockState(path).isOf(Blocks.DIRT)) {
-				if (isClear(world, path.up())) {
+		// A path three wide from the door out to the gate.
+		for (int a = -1; a <= 1; a++) {
+			for (int b = HALF + 1; b < YARD; b++) {
+				BlockPos path = layout.at(a, b, 0);
+				if ((world.getBlockState(path).isOf(Blocks.GRASS_BLOCK) || world.getBlockState(path).isOf(Blocks.DIRT)) && isClear(world, path.up())) {
 					world.setBlockState(path, Blocks.DIRT_PATH.getDefaultState(), Block.NOTIFY_LISTENERS);
 				}
 			}
@@ -722,7 +725,7 @@ public final class OtherBaseBuilder {
 		for (int a : new int[] {-HALF, 2, HALF}) {
 			place(world, layout.at(a, HALF + 1, 1), flower.getDefaultState());
 		}
-		BlockPos post = layout.at(-HALF, HALF + 4, 1);
+		BlockPos post = layout.at(-HALF, YARD + 2, 1);
 		if (placeSupported(world, post, style.wood().fence.getDefaultState())
 				&& place(world, post.up(), style.wood().fence.getDefaultState())) {
 			place(world, post.up(2), Blocks.LANTERN.getDefaultState());
@@ -802,9 +805,9 @@ public final class OtherBaseBuilder {
 
 	/** A 3x3 wheat farm around a water block, in front of the cabin. */
 	private static void buildFarm(ServerWorld world, Layout layout, Random random) {
-		BlockPos water = layout.at(1, HALF + 4, 0);
+		BlockPos water = layout.at(1, YARD + 2, 0);
 		for (int a = 0; a <= 2; a++) {
-			for (int b = HALF + 3; b <= HALF + 5; b++) {
+			for (int b = YARD + 1; b <= YARD + 3; b++) {
 				BlockPos soil = layout.at(a, b, 0);
 				if (soil.equals(water)) {
 					continue;
@@ -822,7 +825,7 @@ public final class OtherBaseBuilder {
 
 	/** A fence around the yard in front of the cabin, with a gate facing the door. */
 	private static void buildFence(ServerWorld world, Layout layout, OtherBaseStyle style) {
-		int nearRow = HALF + 2;
+		int nearRow = YARD;
 		for (int a = -1; a <= 3; a++) {
 			for (int b = nearRow; b <= PLOT_END; b++) {
 				boolean ring = a == -1 || a == 3 || b == nearRow || b == PLOT_END;
@@ -852,7 +855,7 @@ public final class OtherBaseBuilder {
 	/** Animals inside the fence, kept for good: they never despawn. */
 	private static void addAnimals(ServerWorld world, Layout layout, EntityType<?> type, int count, boolean baby, Random random) {
 		for (int i = 0; i < count; i++) {
-			BlockPos spot = layout.at(random.nextBetween(0, 2), random.nextBetween(HALF + 3, HALF + 5), 1);
+			BlockPos spot = layout.at(random.nextBetween(0, 2), random.nextBetween(YARD + 1, YARD + 3), 1);
 			if (!isClear(world, spot) || !(type.create(world) instanceof AnimalEntity animal)) {
 				continue;
 			}
