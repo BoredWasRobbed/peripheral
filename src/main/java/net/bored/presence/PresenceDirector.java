@@ -4,6 +4,7 @@ import net.bored.Peripheral;
 import net.bored.config.PeripheralConfig;
 import net.bored.effect.PresenceEffect;
 import net.bored.effect.PresenceEffects;
+import net.bored.network.PeripheralNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
@@ -25,6 +26,8 @@ import java.util.UUID;
  */
 public final class PresenceDirector {
 	public static final PresenceDirector INSTANCE = new PresenceDirector();
+	/** Effect name the client understands as "go quiet for this many ticks" (0 brings the sound back). */
+	public static final String HUSH = "hush";
 
 	private static final int CHECK_INTERVAL = 20;
 	private static final int TICKS_PER_DAY = 24000;
@@ -40,12 +43,22 @@ public final class PresenceDirector {
 	private static final float DAYLIGHT_FLOOR = 10.0f;
 	private static final float SLEEP_FALL = 20.0f;
 	private static final float AFTER_SCARE_FALL = 30.0f;
+	private static final float AFTER_ENCOUNTER_FALL = 45.0f;
+	/** After a tier 3 or 4 event, nothing else happens for this long, so the quiet afterwards does the work. */
+	private static final int QUIET_MIN_MINUTES = 10;
+	private static final int QUIET_MAX_MINUTES = 20;
+	/** How long the game is silent before a hushed effect plays, and how long the silence lingers after. */
+	private static final int HUSH_LEAD_TICKS = 60 * 20;
+	private static final int FORCED_HUSH_LEAD_TICKS = 5 * 20;
+	private static final int HUSH_AFTER_TICKS = 60 * 20;
 
 	private final PresenceScheduler scheduler = new PresenceScheduler();
 	private final Map<UUID, Map<String, Long>> lastFired = new HashMap<>();
 	private final Map<UUID, String> lastEffect = new HashMap<>();
 	private final Map<UUID, BlockPos> lastLocation = new HashMap<>();
 	private final Set<UUID> debugging = new HashSet<>();
+	/** Players who have had their tier 4 event this session. One per session, however high their unease gets. */
+	private final Set<UUID> hadEncounter = new HashSet<>();
 	private ServerPlayerEntity forcing;
 	private long ticks;
 
@@ -85,7 +98,14 @@ public final class PresenceDirector {
 				next = RETRY_TICKS;
 			} else {
 				PresenceEffect fired = rollEffect(player, context);
-				next = fired != null ? intervalFor(holder.peripheral$getUnease(), player.getRandom()) : RETRY_TICKS;
+				if (fired == null) {
+					next = RETRY_TICKS;
+				} else {
+					next = intervalFor(holder.peripheral$getUnease(), player.getRandom());
+					if (fired.tier() >= 3) {
+						next = Math.max(next, quietPeriod(player.getRandom()));
+					}
+				}
 			}
 		}
 		holder.peripheral$setNextEventTicks(next);
@@ -134,6 +154,11 @@ public final class PresenceDirector {
 		return Math.max(CHECK_INTERVAL, (int) (ticks * PeripheralConfig.get().intervalMultiplier()));
 	}
 
+	private static int quietPeriod(Random random) {
+		int ticks = random.nextBetween(QUIET_MIN_MINUTES * TICKS_PER_MINUTE, QUIET_MAX_MINUTES * TICKS_PER_MINUTE);
+		return (int) (ticks * PeripheralConfig.get().intervalMultiplier());
+	}
+
 	/** Picks and fires an effect that suits the player right now, favouring lower tiers. Returns null if none fit. */
 	private PresenceEffect rollEffect(ServerPlayerEntity player, PresenceContext context) {
 		PeripheralConfig config = PeripheralConfig.get();
@@ -144,9 +169,10 @@ public final class PresenceDirector {
 		for (PresenceEffect effect : PresenceEffects.all()) {
 			Long last = fired.get(effect.name());
 			boolean cooledDown = last == null || ticks - last >= effect.cooldownTicks();
+			boolean firstEncounter = effect.tier() < 4 || !hadEncounter.contains(player.getUuid());
 			boolean allowed = config.isEffectEnabled(effect.name()) && (config.allowWorldChanges || !effect.changesWorld())
 					&& (config.allowFigure || !effect.showsFigure());
-			if (effect.tier() <= maxTier && cooledDown && allowed && effect.canFire(player, context)) {
+			if (effect.tier() <= maxTier && cooledDown && firstEncounter && allowed && effect.canFire(player, context)) {
 				candidates.add(effect);
 			}
 		}
@@ -183,6 +209,27 @@ public final class PresenceDirector {
 	}
 
 	private boolean start(ServerPlayerEntity player, PresenceEffect effect, PresenceContext context) {
+		if (effect.hushes()) {
+			startHushed(player, effect);
+		} else if (!fire(player, effect, context)) {
+			return false;
+		}
+		lastFired.computeIfAbsent(player.getUuid(), id -> new HashMap<>()).put(effect.name(), ticks);
+		lastEffect.put(player.getUuid(), effect.name());
+		UneaseHolder holder = (UneaseHolder) player;
+		if (effect.tier() >= 4) {
+			if (player != forcing) {
+				hadEncounter.add(player.getUuid());
+			}
+			holder.peripheral$setUnease(holder.peripheral$getUnease() - AFTER_ENCOUNTER_FALL);
+		} else if (effect.tier() >= 3) {
+			holder.peripheral$setUnease(holder.peripheral$getUnease() - AFTER_SCARE_FALL);
+		}
+		Peripheral.LOGGER.debug("Presence effect {} for {}", effect.name(), player.getName().getString());
+		return true;
+	}
+
+	private boolean fire(ServerPlayerEntity player, PresenceEffect effect, PresenceContext context) {
 		BlockPos previousLocation = lastLocation.remove(player.getUuid());
 		if (!effect.fire(player, context, scheduler)) {
 			if (previousLocation != null) {
@@ -190,14 +237,42 @@ public final class PresenceDirector {
 			}
 			return false;
 		}
-		lastFired.computeIfAbsent(player.getUuid(), id -> new HashMap<>()).put(effect.name(), ticks);
-		lastEffect.put(player.getUuid(), effect.name());
-		if (effect.tier() >= 3) {
-			UneaseHolder holder = (UneaseHolder) player;
-			holder.peripheral$setUnease(holder.peripheral$getUnease() - AFTER_SCARE_FALL);
-		}
-		Peripheral.LOGGER.debug("Presence effect {} for {}", effect.name(), player.getName().getString());
 		return true;
+	}
+
+	/**
+	 * The game goes quiet now; the effect itself comes a minute later, if the player is still somewhere it suits.
+	 * If it can't happen by then, the sound comes back early and nothing else does.
+	 */
+	private void startHushed(ServerPlayerEntity player, PresenceEffect effect) {
+		boolean forced = player == forcing;
+		boolean report = shouldReport(player);
+		int lead = forced ? FORCED_HUSH_LEAD_TICKS : HUSH_LEAD_TICKS;
+		PeripheralNetworking.sendEffect(player, HUSH, player.getBlockPos(), lead + HUSH_AFTER_TICKS, report);
+		if (report) {
+			player.sendMessage(Text.literal("[Peripheral] ").formatted(Formatting.DARK_RED)
+					.append(Text.literal(effect.name() + ": ").formatted(Formatting.RED))
+					.append(Text.literal("the game goes quiet, the effect plays in " + lead / 20 + "s").formatted(Formatting.GRAY)), false);
+		}
+		scheduler.schedule(lead, () -> {
+			if (player.isDisconnected() || player.isRemoved()) {
+				return;
+			}
+			PresenceContext context = PresenceContext.sample(player);
+			ServerPlayerEntity previous = forcing;
+			forcing = forced ? player : previous;
+			try {
+				if ((forced || effect.canFire(player, context)) && fire(player, effect, context)) {
+					return;
+				}
+			} finally {
+				forcing = previous;
+			}
+			PeripheralNetworking.sendEffect(player, HUSH, player.getBlockPos(), 0, report);
+			if (report) {
+				player.sendMessage(Text.literal("[Peripheral] " + effect.name() + " found nothing to do, sound is back").formatted(Formatting.GRAY), false);
+			}
+		});
 	}
 
 	/** Fires an effect now, ignoring tier, cooldown, grace period and config. Used by the trigger command. */
@@ -233,6 +308,7 @@ public final class PresenceDirector {
 
 	public void onLeave(ServerPlayerEntity player) {
 		debugging.remove(player.getUuid());
+		hadEncounter.remove(player.getUuid());
 		lastEffect.remove(player.getUuid());
 		lastLocation.remove(player.getUuid());
 	}

@@ -4,7 +4,6 @@ import net.bored.network.PeripheralNetworking;
 import net.bored.presence.EffectDebug;
 import net.bored.presence.PresenceContext;
 import net.bored.presence.PresenceScheduler;
-import net.bored.world.PeripheralWorldState;
 import net.minecraft.server.network.ServerPlayerEntity;
 
 /**
@@ -35,9 +34,6 @@ public abstract class FigureEffect implements PresenceEffect {
 
 	@Override
 	public boolean fire(ServerPlayerEntity player, PresenceContext context, PresenceScheduler scheduler) {
-		if (showsFigure()) {
-			PeripheralWorldState.get(player.getServer()).markFigureShown();
-		}
 		PeripheralNetworking.sendEffect(player, name, player.getBlockPos(), 0, EffectDebug.isReporting(player));
 		return true;
 	}

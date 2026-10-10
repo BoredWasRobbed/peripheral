@@ -25,6 +25,10 @@ public final class PresenceEffects {
 		add(new FigureEffect.Watcher());
 		add(new FigureEffect.BehindYou());
 		add(new FigureEffect.Breathing());
+		// Tier 4: Encounter
+		add(new TorchesOutEffect());
+		add(new RunningFeetEffect());
+		add(new OtherBaseEffect());
 	}
 
 	private static void add(PresenceEffect effect) {

@@ -30,6 +30,14 @@ public interface PresenceEffect {
 		return false;
 	}
 
+	/**
+	 * Whether the game goes quiet first: music, ambience and weather fade out about a minute before the effect plays,
+	 * and stay away for a while after. Tier 4 effects do this unless they say otherwise.
+	 */
+	default boolean hushes() {
+		return tier() >= 4;
+	}
+
 	/** Minimum ticks before this effect can happen to the same player again. */
 	default int cooldownTicks() {
 		return 20 * 60 * 15;

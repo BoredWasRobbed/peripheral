@@ -19,17 +19,26 @@ Nothing happens during the first two in-game days of a world.
 | `staring_animal` | A nearby animal stops and follows you with its head until you leave. |
 | `the_watcher` | A figure stands at the edge of your view, 20 to 40 blocks away. Look straight at it, get close, or look away for long and it's gone. |
 | `behind_you` | The figure stands right behind you for a few moments. Only a quick turn catches it. |
-| `breathing` | In tight, dark places: slow breathing just behind your head. Needs `breathing.ogg` (see below). |
+| `breathing` | In tight, dark places: slow breathing just behind your head. |
+| `torches_out` | At night or underground: the torches around you are broken one by one, furthest first, coming closer. Only ones you aren't looking at. |
+| `running_feet` | In the dark or at night: someone sprints at you from behind and stops right at your back. Turning to face it stops it dead. |
+| `the_other_base` | Once per world, out of sight and far from your home: a small lived-in cabin. A bed like yours, food left in the furnace, a chest of early-game supplies, and a campfire whose smoke gives it away. Nobody is ever home. |
 
-Tier 1 (the first three) can happen any time. Tier 2 needs unease of 25 or more, tier 3 (the figure and breathing) 50 or more, and a tier 3 event knocks unease back down by 30. World changes only ever touch doors, single torches, natural stone and open air, and never happen where you can see them.
+Tier 1 (the first three) can happen any time. Tier 2 needs unease of 25 or more, tier 3 (the figure and breathing) 50 or more, and tier 4 (the last three) 75 or more. World changes only ever touch doors, torches, natural stone and open air, and never happen where you can see them.
+
+Big moments are kept rare and quiet:
+
+- Before `torches_out` and `running_feet`, the game goes silent. Music, ambience and weather stop about a minute before, and stay away for another minute after. Your own sounds and the world's still play.
+- After any tier 3 or 4 event, nothing else happens for 10 to 20 minutes, and unease drops (by 30 after tier 3, by 45 after tier 4).
+- Tier 4 happens at most once per play session.
 
 ## The figure
 
-The figure is only drawn on the haunted player's screen; it doesn't exist on the server and nobody else can see it. It wears one skin per world, so it always looks like the same stranger. When a world is first opened, the server borrows the skin of a random real player from Mojang (by trying made-up usernames until one exists). If that fails, for example offline, it wears one of Minecraft's default skins and tries again on the next start, until the figure has been seen once. It never has a name tag.
+The figure is another version of you, overlapping into your world for a moment. It wears your own skin on your own model (classic or slim), never has a name tag, and is only drawn on your screen; it doesn't exist on the server and nobody else can see it. In multiplayer, each player sees their own double.
 
 ## Custom sounds
 
-Put custom sounds in `src/main/resources/assets/peripheral/sounds/`:
+Custom sounds live in `src/main/resources/assets/peripheral/sounds/`:
 
 | File | Used by |
 | --- | --- |
@@ -41,7 +50,7 @@ Operator commands:
 
 - `/peripheral debug` toggles an on-screen readout of your unease, the countdown to the next event, and how far and in which direction the last event was. While it's on, every event also posts a chat line with its coordinates (click to teleport) and marks the spot with a column of particles for 30 seconds. Footstep echoes mark each step with smoke.
 - `/peripheral unease [player]` and `/peripheral unease set <0-100> [player]`
-- `/peripheral trigger <effect> [player]` fires an effect immediately, ignoring grace period, tier and cooldown, and always reports where it happened.
+- `/peripheral trigger <effect> [player]` fires an effect immediately, ignoring grace period, tier and cooldown, and always reports where it happened. Effects that go quiet first wait 5 seconds instead of a minute.
 - `/peripheral reload` reloads `config/peripheral.json`.
 
 Config (`config/peripheral.json`):

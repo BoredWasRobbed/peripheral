@@ -24,8 +24,9 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.math.random.Random;
 
 /**
- * The figure: drawn only on this player's screen, wearing the world's borrowed skin. It never exists on the server,
- * so nobody else can see it, and it is gone the moment the player looks straight at it or comes close.
+ * The figure: another version of the player, overlapping into their world for a moment. It is drawn only on their
+ * screen, in their own skin, and never exists on the server, so nobody else can see it. It is gone the moment the
+ * player looks straight at it or comes close.
  */
 public final class Figure {
 	public static final Figure INSTANCE = new Figure();
@@ -214,7 +215,7 @@ public final class Figure {
 		matrices.translate(0.0f, -1.501f, 0.0f);
 
 		int light = WorldRenderer.getLightmapCoordinates(client.world, BlockPos.ofFloored(pos.x, pos.y + 1.0, pos.z));
-		model.render(matrices, consumers.getBuffer(RenderLayer.getEntityTranslucent(FigureSkin.texture())),
+		model.render(matrices, consumers.getBuffer(RenderLayer.getEntityTranslucent(FigureSkin.texture(client))),
 				light, OverlayTexture.DEFAULT_UV, 1.0f, 1.0f, 1.0f, 1.0f);
 		matrices.pop();
 	}
