@@ -84,6 +84,16 @@ public class PeripheralWorldState extends PersistentState {
 		markDirty();
 	}
 
+	/** Forgets the other base so a new one can be started. Its blocks stay where they are. */
+	public void clearOtherBase() {
+		otherBase = null;
+		otherBaseCentre = null;
+		otherBaseFront = null;
+		otherBaseStage = 0;
+		otherBaseNextStage = 0L;
+		markDirty();
+	}
+
 	public void setOtherBaseStage(int stage, long nextStage) {
 		otherBaseStage = stage;
 		otherBaseNextStage = nextStage;

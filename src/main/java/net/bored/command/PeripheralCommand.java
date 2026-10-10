@@ -32,6 +32,7 @@ import static net.minecraft.server.command.CommandManager.literal;
  * /peripheral trigger &lt;effect&gt; [player]    fire an effect now
  * /peripheral otherbase                    where the other base is and how far along
  * /peripheral otherbase grow               build its next stage now
+ * /peripheral otherbase reset              forget it (blocks stay) so a new one can start
  * /peripheral debug                        toggle the on-screen readout
  * /peripheral reload                       reload config/peripheral.json
  * </pre>
@@ -62,7 +63,14 @@ public final class PeripheralCommand {
 				.then(literal("otherbase")
 						.executes(PeripheralCommand::showOtherBase)
 						.then(literal("grow")
-								.executes(PeripheralCommand::growOtherBase)))
+								.executes(PeripheralCommand::growOtherBase))
+						.then(literal("reset")
+								.executes(ctx -> {
+									PeripheralWorldState.get(ctx.getSource().getServer()).clearOtherBase();
+									ctx.getSource().sendFeedback(() -> Text.literal(
+											"Forgot the other base; its blocks are still there. A new one can now be started"), true);
+									return 1;
+								})))
 				.then(literal("debug")
 						.executes(PeripheralCommand::toggleDebug))
 				.then(literal("reload")
