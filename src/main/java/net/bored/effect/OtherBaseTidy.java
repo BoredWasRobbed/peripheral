@@ -24,6 +24,7 @@ import net.minecraft.world.Heightmap;
 import net.minecraft.world.World;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -37,6 +38,8 @@ public final class OtherBaseTidy {
 	private static final double RADIUS = 20.0;
 	/** Blocks more than this far below the floor are underground, and left alone. */
 	private static final int SURFACE_DEPTH = 2;
+	/** How far above the floor the snapshot reaches. */
+	private static final int SNAPSHOT_HEIGHT = 16;
 	/** Rows behind the cabin where overflow chests go. */
 	private static final int[] BACK_ROWS = {-OtherBaseBuilder.HALF - 2, -OtherBaseBuilder.HALF - 4, -OtherBaseBuilder.HALF - 6, -OtherBaseBuilder.HALF - 8};
 
@@ -58,7 +61,39 @@ public final class OtherBaseTidy {
 		if (dx * dx + dz * dz > RADIUS * RADIUS || pos.getY() < centre.getY() - SURFACE_DEPTH) {
 			return;
 		}
-		worldState.addPlacedNearBase(pos, Registries.BLOCK.getId(state.getBlock()).toString());
+		String block = Registries.BLOCK.getId(state.getBlock()).toString();
+		if (block.equals(worldState.snapshotBlock(pos))) {
+			// The same block back where it was: as far as the owner can tell, nothing changed.
+			worldState.removePlacedNearBase(pos);
+			return;
+		}
+		worldState.addPlacedNearBase(pos, block);
+	}
+
+	/**
+	 * Remembers how the surface around the base looks now: when it's started, after each stage goes up, and once for
+	 * bases from before snapshots existed. Blocks still waiting to be tidied are left out, so they stay unfamiliar.
+	 */
+	static void snapshot(ServerWorld world, PeripheralWorldState state, OtherBaseBuilder.Layout layout) {
+		BlockPos centre = layout.centre();
+		int radius = (int) Math.ceil(RADIUS);
+		Map<Long, String> snapshot = new HashMap<>();
+		BlockPos.Mutable pos = new BlockPos.Mutable();
+		for (int dx = -radius; dx <= radius; dx++) {
+			for (int dz = -radius; dz <= radius; dz++) {
+				if (dx * dx + dz * dz > RADIUS * RADIUS) {
+					continue;
+				}
+				for (int y = centre.getY() - SURFACE_DEPTH; y <= centre.getY() + SNAPSHOT_HEIGHT; y++) {
+					pos.set(centre.getX() + dx, y, centre.getZ() + dz);
+					BlockState block = world.getBlockState(pos);
+					if (!block.isAir() && !state.placedNearBase().containsKey(pos)) {
+						snapshot.put(pos.asLong(), Registries.BLOCK.getId(block.getBlock()).toString());
+					}
+				}
+			}
+		}
+		state.setBaseSnapshot(snapshot);
 	}
 
 	/** Takes down every remembered block that is still there and stores it. Only called while nobody is watching. */

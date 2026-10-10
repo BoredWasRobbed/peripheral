@@ -242,11 +242,19 @@ public final class OtherBaseBuilder {
 		ServerWorld world = server.getOverworld();
 		boolean tidy = !state.placedNearBase().isEmpty();
 		boolean due = state.otherBaseStage() < MAX_STAGE && world.getTime() >= state.otherBaseNextStage();
-		if (!tidy && !due) {
+		boolean snapshot = !state.hasBaseSnapshot();
+		if (!tidy && !due && !snapshot) {
 			return;
 		}
 		Layout layout = layoutOf(world, state);
-		if (layout == null || isWatched(world, layout)) {
+		if (layout == null) {
+			return;
+		}
+		if (snapshot) {
+			loadArea(world, layout);
+			OtherBaseTidy.snapshot(world, state, layout);
+		}
+		if ((!tidy && !due) || isWatched(world, layout)) {
 			return;
 		}
 		loadArea(world, layout);
@@ -280,6 +288,7 @@ public final class OtherBaseBuilder {
 		Random random = world.getRandom();
 		build(world, layout, OtherBaseStyle.of(state), stage, random);
 		state.setOtherBaseStage(stage, nextStage);
+		OtherBaseTidy.snapshot(world, state, layout);
 
 		BlockPos door = layout.door();
 		for (ServerPlayerEntity player : world.getPlayers()) {

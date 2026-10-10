@@ -4,13 +4,17 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtHelper;
 import net.minecraft.nbt.NbtList;
+import net.minecraft.nbt.NbtString;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.world.PersistentState;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -33,6 +37,11 @@ public class PeripheralWorldState extends PersistentState {
 	private String otherBaseWood = "";
 	private String otherBaseStone = "";
 	private String otherBaseYard = "";
+	/**
+	 * How the surface around the base looked, as the owner knows it: block id by packed position, air left out.
+	 * A block put back where the same block used to be isn't noticed. Empty until the first snapshot is taken.
+	 */
+	private final Map<Long, String> baseSnapshot = new HashMap<>();
 	/** Blocks players placed around the other base, with the block that was placed, waiting to be tidied away. */
 	private final Map<BlockPos, String> placedNearBase = new LinkedHashMap<>();
 
@@ -54,6 +63,14 @@ public class PeripheralWorldState extends PersistentState {
 		state.otherBaseWood = nbt.getString("otherBaseWood");
 		state.otherBaseStone = nbt.getString("otherBaseStone");
 		state.otherBaseYard = nbt.getString("otherBaseYard");
+		NbtList palette = nbt.getList("snapshotPalette", NbtElement.STRING_TYPE);
+		long[] positions = nbt.getLongArray("snapshotPositions");
+		int[] blocks = nbt.getIntArray("snapshotBlocks");
+		for (int i = 0; i < Math.min(positions.length, blocks.length); i++) {
+			if (blocks[i] >= 0 && blocks[i] < palette.size()) {
+				state.baseSnapshot.put(positions[i], palette.getString(blocks[i]));
+			}
+		}
 		NbtList placed = nbt.getList("placedNearBase", NbtElement.COMPOUND_TYPE);
 		for (int i = 0; i < placed.size(); i++) {
 			NbtCompound entry = placed.getCompound(i);
@@ -76,6 +93,26 @@ public class PeripheralWorldState extends PersistentState {
 		nbt.putString("otherBaseWood", otherBaseWood);
 		nbt.putString("otherBaseStone", otherBaseStone);
 		nbt.putString("otherBaseYard", otherBaseYard);
+		List<String> palette = new ArrayList<>();
+		Map<String, Integer> paletteIndex = new HashMap<>();
+		long[] positions = new long[baseSnapshot.size()];
+		int[] blocks = new int[baseSnapshot.size()];
+		int i = 0;
+		for (Map.Entry<Long, String> entry : baseSnapshot.entrySet()) {
+			positions[i] = entry.getKey();
+			blocks[i] = paletteIndex.computeIfAbsent(entry.getValue(), block -> {
+				palette.add(block);
+				return palette.size() - 1;
+			});
+			i++;
+		}
+		NbtList paletteNbt = new NbtList();
+		for (String block : palette) {
+			paletteNbt.add(NbtString.of(block));
+		}
+		nbt.put("snapshotPalette", paletteNbt);
+		nbt.putLongArray("snapshotPositions", positions);
+		nbt.putIntArray("snapshotBlocks", blocks);
 		NbtList placed = new NbtList();
 		placedNearBase.forEach((pos, block) -> {
 			NbtCompound entry = new NbtCompound();
@@ -124,6 +161,7 @@ public class PeripheralWorldState extends PersistentState {
 		otherBaseStage = 0;
 		otherBaseNextStage = 0L;
 		placedNearBase.clear();
+		baseSnapshot.clear();
 		otherBaseWood = "";
 		otherBaseStone = "";
 		otherBaseYard = "";
@@ -159,6 +197,21 @@ public class PeripheralWorldState extends PersistentState {
 			placedNearBase.put(pos.toImmutable(), block);
 			markDirty();
 		}
+	}
+
+	public boolean hasBaseSnapshot() {
+		return !baseSnapshot.isEmpty();
+	}
+
+	/** The block the snapshot remembers at this position, or null for air (or nothing remembered). */
+	public String snapshotBlock(BlockPos pos) {
+		return baseSnapshot.get(pos.asLong());
+	}
+
+	public void setBaseSnapshot(Map<Long, String> snapshot) {
+		baseSnapshot.clear();
+		baseSnapshot.putAll(snapshot);
+		markDirty();
 	}
 
 	public void removePlacedNearBase(BlockPos pos) {
