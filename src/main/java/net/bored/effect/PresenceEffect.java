@@ -20,6 +20,11 @@ public interface PresenceEffect {
 		return 10;
 	}
 
+	/** Whether this effect actually changes blocks in the world. These can all be turned off with one config switch. */
+	default boolean changesWorld() {
+		return false;
+	}
+
 	/** Minimum ticks before this effect can happen to the same player again. */
 	default int cooldownTicks() {
 		return 20 * 60 * 15;

@@ -106,7 +106,7 @@ public final class PresenceDirector {
 		if (context.night() && context.skyVisible()) {
 			rise += NIGHT_RISE;
 		}
-		return rise * (float) config.uneaseRiseMultiplier;
+		return rise * (float) config.riseMultiplier();
 	}
 
 	/** The highest tier of event the player's unease allows. */
@@ -128,20 +128,21 @@ public final class PresenceDirector {
 			default -> { minMinutes = 20; maxMinutes = 40; }
 		}
 		int ticks = random.nextBetween(minMinutes * TICKS_PER_MINUTE, maxMinutes * TICKS_PER_MINUTE);
-		return Math.max(CHECK_INTERVAL, (int) (ticks * PeripheralConfig.get().eventIntervalMultiplier));
+		return Math.max(CHECK_INTERVAL, (int) (ticks * PeripheralConfig.get().intervalMultiplier()));
 	}
 
 	/** Picks and fires an effect that suits the player right now, favouring lower tiers. Returns null if none fit. */
 	private PresenceEffect rollEffect(ServerPlayerEntity player, PresenceContext context) {
 		PeripheralConfig config = PeripheralConfig.get();
-		int maxTier = tierFor(((UneaseHolder) player).peripheral$getUnease());
+		int maxTier = Math.min(tierFor(((UneaseHolder) player).peripheral$getUnease()), config.preset().maxTier);
 		Map<String, Long> fired = lastFired.computeIfAbsent(player.getUuid(), id -> new HashMap<>());
 
 		List<PresenceEffect> candidates = new ArrayList<>();
 		for (PresenceEffect effect : PresenceEffects.all()) {
 			Long last = fired.get(effect.name());
 			boolean cooledDown = last == null || ticks - last >= effect.cooldownTicks();
-			if (effect.tier() <= maxTier && cooledDown && config.isEffectEnabled(effect.name()) && effect.canFire(player, context)) {
+			boolean allowed = config.isEffectEnabled(effect.name()) && (config.allowWorldChanges || !effect.changesWorld());
+			if (effect.tier() <= maxTier && cooledDown && allowed && effect.canFire(player, context)) {
 				candidates.add(effect);
 			}
 		}

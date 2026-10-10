@@ -3,14 +3,17 @@ package net.bored;
 import net.bored.command.PeripheralCommand;
 import net.bored.config.PeripheralConfig;
 import net.bored.effect.PresenceEffects;
+import net.bored.effect.StaringAnimalEffect;
 import net.bored.presence.PresenceDirector;
 import net.bored.presence.UneaseHolder;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.EntitySleepEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Identifier;
 
@@ -42,6 +45,13 @@ public class Peripheral implements ModInitializer {
 		EntitySleepEvents.STOP_SLEEPING.register((entity, sleepingPos) -> {
 			if (entity instanceof ServerPlayerEntity player && player.getWorld().isDay()) {
 				PresenceDirector.INSTANCE.onSlept(player);
+			}
+		});
+
+		// An animal still frozen from a stare when the world was last closed gets its AI back.
+		ServerEntityEvents.ENTITY_LOAD.register((entity, world) -> {
+			if (entity instanceof MobEntity mob && mob.getCommandTags().contains(StaringAnimalEffect.TAG)) {
+				StaringAnimalEffect.release(mob);
 			}
 		});
 

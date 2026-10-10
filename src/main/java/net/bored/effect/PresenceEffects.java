@@ -12,9 +12,15 @@ public final class PresenceEffects {
 	}
 
 	public static void register() {
+		// Tier 1: Whispers
 		add(new FootstepEchoEffect());
 		add(new PhantomContainerEffect());
 		add(new DistantMiningEffect());
+		// Tier 2: Signs
+		add(new LeftOpenEffect());
+		add(new TorchOutEffect());
+		add(new SomeoneElsesWorkEffect());
+		add(new StaringAnimalEffect());
 	}
 
 	private static void add(PresenceEffect effect) {
