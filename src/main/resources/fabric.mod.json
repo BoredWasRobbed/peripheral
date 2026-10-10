@@ -3,13 +3,13 @@
 	"id": "peripheral",
 	"version": "${version}",
 	"name": "Peripheral",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "You are not alone. Footsteps that aren't yours, doors you didn't open, and something at the edge of your vision.",
 	"authors": [
-		"Me!"
+		"Bored"
 	],
 	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+		"sources": "https://github.com/BoredWasRobbed/peripheral",
+		"issues": "https://github.com/BoredWasRobbed/peripheral/issues"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/peripheral/icon.png",

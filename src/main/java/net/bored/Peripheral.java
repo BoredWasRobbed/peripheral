@@ -1,7 +1,17 @@
 package net.bored;
 
+import net.bored.command.PeripheralCommand;
+import net.bored.config.PeripheralConfig;
+import net.bored.effect.PresenceEffects;
+import net.bored.presence.PresenceDirector;
+import net.bored.presence.UneaseHolder;
 import net.fabricmc.api.ModInitializer;
-
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.entity.event.v1.EntitySleepEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Identifier;
 
 import org.slf4j.Logger;
@@ -10,18 +20,34 @@ import org.slf4j.LoggerFactory;
 public class Peripheral implements ModInitializer {
 	public static final String MOD_ID = "peripheral";
 
-	// This logger is used to write text to the console and the log file.
-	// It is considered best practice to use your mod id as the logger's name.
-	// That way, it's clear which mod wrote info, warnings, and errors.
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
 	@Override
 	public void onInitialize() {
-		// This code runs as soon as Minecraft is in a mod-load-ready state.
-		// However, some things (like resources) may still be uninitialized.
-		// Proceed with mild caution.
+		PeripheralConfig.load();
+		PresenceEffects.register();
 
-		LOGGER.info("Hello Fabric world!");
+		ServerTickEvents.END_SERVER_TICK.register(PresenceDirector.INSTANCE::tick);
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> PresenceDirector.INSTANCE.onJoin(handler.player));
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> PresenceDirector.INSTANCE.onLeave(handler.player));
+
+		// Unease survives death; the thing doesn't forget you because you respawned.
+		ServerPlayerEvents.COPY_FROM.register((oldPlayer, newPlayer, alive) -> {
+			UneaseHolder from = (UneaseHolder) oldPlayer;
+			UneaseHolder to = (UneaseHolder) newPlayer;
+			to.peripheral$setUnease(from.peripheral$getUnease());
+			to.peripheral$setNextEventTicks(from.peripheral$getNextEventTicks());
+		});
+
+		EntitySleepEvents.STOP_SLEEPING.register((entity, sleepingPos) -> {
+			if (entity instanceof ServerPlayerEntity player && player.getWorld().isDay()) {
+				PresenceDirector.INSTANCE.onSlept(player);
+			}
+		});
+
+		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> PeripheralCommand.register(dispatcher));
+
+		LOGGER.info("Peripheral loaded with {} presence effects", PresenceEffects.all().size());
 	}
 
 	public static Identifier id(String path) {
